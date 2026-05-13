@@ -692,6 +692,57 @@ minMaxCard.setConfig({ co2_entity: 'sensor.co2', show_min_max: true });
 assert(minMaxCard._config.show_min_max === true, 'show_min_max can be enabled');
 
 // ============================================================
+// METRIC ORDERING (issue #19)
+// ============================================================
+
+section('Metric order — default');
+
+const defaultOrderCard = new CardClass();
+defaultOrderCard.setConfig({ co2_entity: 'sensor.co2' });
+const defaultOrder = defaultOrderCard._getMetricOrder();
+assert(defaultOrder[0] === 'co', 'default order: co first');
+assert(defaultOrder[defaultOrder.length - 1] === 'temperature', 'default order: temperature last');
+assert(defaultOrder.length === 13, 'default order: all 13 metrics');
+
+section('Metric order — user override');
+
+const reorderedCard = new CardClass();
+reorderedCard.setConfig({
+  co2_entity: 'sensor.co2',
+  order: ['temperature', 'humidity', 'co2', 'pm10', 'pm25']
+});
+const reordered = reorderedCard._getMetricOrder();
+assert(reordered[0] === 'temperature', 'user order: temperature first');
+assert(reordered[1] === 'humidity', 'user order: humidity second');
+assert(reordered[2] === 'co2', 'user order: co2 third');
+assert(reordered[3] === 'pm10', 'user order: pm10 fourth');
+assert(reordered[4] === 'pm25', 'user order: pm25 fifth');
+// Unmentioned metrics get appended in default order — user never loses a sensor
+assert(reordered.includes('radon'), 'unmentioned metrics still present');
+assert(reordered.length === 13, 'user order: total still 13');
+
+section('Metric order — invalid input');
+
+const badOrderCard = new CardClass();
+badOrderCard.setConfig({ co2_entity: 'sensor.co2', order: 'not an array' });
+const fallback = badOrderCard._getMetricOrder();
+assert(fallback[0] === 'co', 'non-array order falls back to defaults');
+
+const partialBadCard = new CardClass();
+partialBadCard.setConfig({
+  co2_entity: 'sensor.co2',
+  order: ['temperature', 'invalid_metric', 'co2']
+});
+const filtered = partialBadCard._getMetricOrder();
+assert(filtered.indexOf('temperature') === 0, 'invalid metrics are dropped, valid ones preserved');
+assert(filtered.indexOf('co2') === 1, 'invalid entries skipped in order');
+assert(!filtered.includes('invalid_metric'), 'invalid metric never appears');
+
+const emptyOrderCard = new CardClass();
+emptyOrderCard.setConfig({ co2_entity: 'sensor.co2', order: [] });
+assert(emptyOrderCard._getMetricOrder()[0] === 'co', 'empty array → default order');
+
+// ============================================================
 // CARD SIZE TESTS
 // ============================================================
 

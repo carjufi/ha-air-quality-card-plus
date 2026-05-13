@@ -101,6 +101,7 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 | `temperature_unit` | string | No | "auto" | Temperature unit: "auto" (detect from HA), "F" (Fahrenheit), or "C" (Celsius) |
 | `radon_unit` | string | No | "auto" | Radon unit: "auto" (detect from sensor), "pCi/L" (US), or "Bq/m3" (International) |
 | `show_min_max` | boolean | No | `false` | Show the min/max value seen over the displayed time window beneath each metric |
+| `order` | array | No | default | Custom display order for metrics (see [Sensor Order](#sensor-order)) |
 | `outdoor_co2_entity` | string | No | - | Outdoor CO2 sensor for comparison |
 | `outdoor_pm25_entity` | string | No | - | Outdoor PM2.5 sensor for comparison |
 | `outdoor_pm1_entity` | string | No | - | Outdoor PM1 sensor for comparison |
@@ -113,6 +114,27 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 | `outdoor_temperature_entity` | string | No | - | Outdoor temperature sensor for comparison |
 
 \* At least one sensor entity is required. Use any combination that fits your setup.
+
+### Sensor Order
+
+Customize which sensors come first on the card. Provide a list of metric names — any metric you don't list keeps its default position and stays visible.
+
+Valid metric names: `co`, `radon`, `co2`, `pm25`, `pm10`, `pm1`, `pm03`, `pm4`, `hcho`, `tvoc`, `nox`, `humidity`, `temperature`.
+
+```yaml
+type: custom:air-quality-card
+co2_entity: sensor.air_quality_co2
+humidity_entity: sensor.air_quality_humidity
+temperature_entity: sensor.air_quality_temp
+pm10_entity: sensor.air_quality_pm10
+pm25_entity: sensor.air_quality_pm25
+order:
+  - temperature
+  - humidity
+  - co2
+  - pm10
+  - pm25
+```
 
 ### Outdoor Sensors
 
