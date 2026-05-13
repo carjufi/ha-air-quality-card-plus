@@ -100,6 +100,7 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 | `hours_to_show` | number | No | 24 | Hours of history to display (1-168) |
 | `temperature_unit` | string | No | "auto" | Temperature unit: "auto" (detect from HA), "F" (Fahrenheit), or "C" (Celsius) |
 | `radon_unit` | string | No | "auto" | Radon unit: "auto" (detect from sensor), "pCi/L" (US), or "Bq/m3" (International) |
+| `language` | string | No | "auto" | UI language. "auto" (use Home Assistant's), "en", "es", "fr", or "de" |
 | `outdoor_co2_entity` | string | No | - | Outdoor CO2 sensor for comparison |
 | `outdoor_pm25_entity` | string | No | - | Outdoor PM2.5 sensor for comparison |
 | `outdoor_pm1_entity` | string | No | - | Outdoor PM1 sensor for comparison |
@@ -112,6 +113,14 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 | `outdoor_temperature_entity` | string | No | - | Outdoor temperature sensor for comparison |
 
 \* At least one sensor entity is required. Use any combination that fits your setup.
+
+### Language
+
+The card auto-detects your Home Assistant frontend language and translates the status badge, recommendations, recommendation subtitles, radon advisory titles, and editor labels. Translations included so far: **English, Spanish, French, German** (Spanish/French/German contributed by [@b0rv3g4r4](https://github.com/b0rv3g4r4) on PR #11).
+
+If auto-detection picks the wrong language, force one explicitly with `language: es` (or `en` / `fr` / `de`).
+
+To contribute a new language: open a PR adding a block to the `TRANSLATIONS` const in `air-quality-card.js`. Copy the `en:` block, rename the key (e.g. `it:` for Italian), and translate the values — keep the structure identical. English is the fallback for any missing key.
 
 ### Outdoor Sensors
 

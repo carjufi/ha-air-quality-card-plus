@@ -493,6 +493,110 @@ try {
 assert(configValid, 'radon_longterm_entity alone is valid config');
 
 // ============================================================
+// LOCALIZATION (issue #10, supersedes PR #11)
+// ============================================================
+
+section('Language resolution');
+
+// Default behavior: no language config, no hass.locale → English
+const enCard = new CardClass();
+enCard.setConfig({ co2_entity: 'sensor.co2' });
+enCard._hass = { config: { unit_system: { temperature: '°F' } }, states: {} };
+assert(enCard._resolveLanguage() === 'en', 'default → en');
+
+// hass.locale.language wins (modern HA)
+enCard._hass = { config: { unit_system: { temperature: '°F' } }, states: {}, locale: { language: 'es' } };
+assert(enCard._resolveLanguage() === 'es', 'hass.locale.language → es');
+
+// hass.language fallback (older HA)
+enCard._hass = { config: { unit_system: { temperature: '°F' } }, states: {}, language: 'fr' };
+assert(enCard._resolveLanguage() === 'fr', 'hass.language fallback → fr');
+
+// Explicit config wins over both
+enCard._hass = { config: { unit_system: { temperature: '°F' } }, states: {}, locale: { language: 'es' } };
+enCard._config.language = 'de';
+assert(enCard._resolveLanguage() === 'de', 'config.language overrides hass.locale.language');
+
+// Unknown language falls back to en
+enCard._config.language = 'xx';
+assert(enCard._resolveLanguage() === 'en', 'unknown language → en fallback');
+
+// Regional code is stripped (e.g. en-US → en)
+enCard._config.language = 'auto';
+enCard._hass = { config: { unit_system: { temperature: '°F' } }, states: {}, locale: { language: 'es-MX' } };
+assert(enCard._resolveLanguage() === 'es', 'es-MX → es (regional code stripped)');
+
+section('Translation lookup');
+
+// English baseline
+enCard._config.language = 'en';
+assert(enCard._t('status', 'excellent') === 'Excellent', 'en status: excellent');
+assert(enCard._t('status', 'poor') === 'Poor', 'en status: poor');
+assert(enCard._t('recommendation', 'open_window') === 'Open Window', 'en recommendation: open_window');
+
+// Spanish
+enCard._config.language = 'es';
+assert(enCard._t('status', 'excellent') === 'Excelente', 'es status: Excelente');
+assert(enCard._t('status', 'poor') === 'Malo', 'es status: Malo');
+assert(enCard._t('recommendation', 'open_window') === 'Abre la ventana', 'es recommendation: Abre la ventana');
+
+// French
+enCard._config.language = 'fr';
+assert(enCard._t('status', 'excellent') === 'Excellent', 'fr status: Excellent');
+assert(enCard._t('recommendation', 'run_air_purifier') === 'Utiliser le purificateur', 'fr recommendation: Utiliser le purificateur');
+
+// German
+enCard._config.language = 'de';
+assert(enCard._t('status', 'good') === 'Gut', 'de status: Gut');
+assert(enCard._t('recommendation', 'all_good') === 'Alles gut', 'de recommendation: Alles gut');
+
+// Missing key falls back to English
+enCard._config.language = 'es';
+assert(enCard._t('status', 'not_a_real_key') === 'not_a_real_key', 'unknown key returns the key itself');
+
+section('Interpolation (_ts)');
+enCard._config.language = 'en';
+assert(enCard._ts('subtitle', 'co_danger', { value: 42 }) === 'CO at 42 ppm — dangerous levels detected', 'en interpolated subtitle');
+enCard._config.language = 'es';
+assert(enCard._ts('subtitle', 'co_danger', { value: 42 }) === 'CO en 42 ppm — niveles peligrosos detectados', 'es interpolated subtitle');
+
+section('Overall status reflects language');
+
+// Reuse the existing setup pattern
+function aqCardWithLang(lang) {
+  const c = new CardClass();
+  c.setConfig({ co2_entity: 'sensor.co2', language: lang });
+  c._hass = { config: { unit_system: { temperature: '°F' } }, states: { 'sensor.co2': { state: '2000' } } };
+  return c;
+}
+
+assert(aqCardWithLang('en')._getOverallStatus().status === 'Poor', 'en: 2000ppm → Poor');
+assert(aqCardWithLang('es')._getOverallStatus().status === 'Malo', 'es: 2000ppm → Malo');
+assert(aqCardWithLang('fr')._getOverallStatus().status === 'Mauvais', 'fr: 2000ppm → Mauvais');
+assert(aqCardWithLang('de')._getOverallStatus().status === 'Schlecht', 'de: 2000ppm → Schlecht');
+
+section('Recommendation key + translation');
+
+function recCardWithLang(lang, co2) {
+  const c = new CardClass();
+  c.setConfig({ co2_entity: 'sensor.co2', language: lang });
+  c._hass = { config: { unit_system: { temperature: '°F' } }, states: { 'sensor.co2': { state: String(co2) } } };
+  return c;
+}
+
+assert(recCardWithLang('en', 2000)._getRecommendationKey() === 'ventilate_now', 'key for high CO2 = ventilate_now');
+assert(recCardWithLang('en', 2000)._getRecommendation() === 'Ventilate Now', 'en rec text: Ventilate Now');
+assert(recCardWithLang('es', 2000)._getRecommendation() === 'Ventila ahora', 'es rec text: Ventila ahora');
+assert(recCardWithLang('de', 2000)._getRecommendation() === 'Jetzt lüften', 'de rec text: Jetzt lüften');
+
+// Icon resolution works with both key (preferred) and English text (backward-compat)
+assert(recCardWithLang('en', 2000)._getRecommendationIcon('ventilate_now') === 'mdi:alert-circle', 'icon by key');
+assert(recCardWithLang('en', 2000)._getRecommendationIcon('Ventilate Now') === 'mdi:alert-circle', 'icon by English text (backward-compat)');
+
+// Reset card._config for downstream tests
+card._config = { name: 'Test', hours_to_show: 24, temperature_unit: 'auto' };
+
+// ============================================================
 // CARD SIZE TESTS
 // ============================================================
 
