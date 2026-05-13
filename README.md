@@ -96,10 +96,30 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 | `tvoc_entity` | string | No* | - | Volatile organic compounds (tVOC) sensor entity ID |
 | `humidity_entity` | string | No* | - | Humidity sensor entity ID |
 | `temperature_entity` | string | No* | - | Temperature sensor entity ID |
-| `air_quality_entity` | string | No | - | Overall air quality index entity |
+| `air_quality_entity` | string | No | - | Overall air quality index entity ([passthrough — see below](#air-quality-index-entity)) |
 | `hours_to_show` | number | No | 24 | Hours of history to display (1-168) |
 | `temperature_unit` | string | No | "auto" | Temperature unit: "auto" (detect from HA), "F" (Fahrenheit), or "C" (Celsius) |
 | `radon_unit` | string | No | "auto" | Radon unit: "auto" (detect from sensor), "pCi/L" (US), or "Bq/m3" (International) |
+| `show_min_max` | boolean | No | `false` | Overlay the min/max values of the displayed time window directly at the data points on the graph |
+| `order` | array | No | default | Custom display order for metrics (see [Sensor Order](#sensor-order)) |
+| `display` | string | No | "full" | "full" (graphs and details) or "compact" (status badge only, ideal for overview pages) |
+| `tap_action` | action | No | - | Standard HA action object (e.g., `{ action: navigate, navigation_path: /air-quality }`). Active in compact mode |
+| `hold_action` | action | No | - | Same as `tap_action` but fired after holding for ~500 ms |
+| `double_tap_action` | action | No | - | Same as `tap_action` but fired on double-tap |
+| `co_thresholds` | array | No | `[4, 9, 35, 100]` | Custom CO color/status thresholds (4 ascending numbers defining 5 tiers) |
+| `co2_thresholds` | array | No | `[600, 800, 1000, 1500]` | Custom CO₂ color/status thresholds |
+| `pm25_thresholds` | array | No | `[5, 15, 25, 35]` | Custom PM2.5 thresholds |
+| `pm10_thresholds` | array | No | `[15, 45, 75, 150]` | Custom PM10 thresholds |
+| `pm1_thresholds` | array | No | `[5, 15, 25, 35]` | Custom PM1 thresholds |
+| `pm03_thresholds` | array | No | `[500, 1000, 3000, 5000]` | Custom PM0.3 thresholds |
+| `pm4_thresholds` | array | No | `[10, 25, 37.5, 50]` | Custom PM4 thresholds |
+| `hcho_thresholds` | array | No | `[20, 50, 100, 200]` | Custom HCHO thresholds (ppb) |
+| `tvoc_thresholds` | array | No | mode-dependent | Custom tVOC thresholds (units depend on `tvoc_unit`) |
+| `nox_thresholds` | array | No | `[20, 50, 150, 250]` | Custom NOx thresholds (ppb) |
+| `radon_thresholds` | array | No | `[48, 100, 148, 300]` | Custom radon thresholds (Bq/m³ — even if you display in pCi/L) |
+| `humidity_thresholds` | array | No | `[30, 40, 50, 60]` | Custom humidity thresholds (%) |
+| `temperature_thresholds` | array | No | unit-dependent | Custom temperature thresholds (in the unit your sensor reports) |
+| `language` | string | No | "auto" | UI language. "auto" (use Home Assistant's), "en", "es", "fr", or "de" |
 | `outdoor_co2_entity` | string | No | - | Outdoor CO2 sensor for comparison |
 | `outdoor_pm25_entity` | string | No | - | Outdoor PM2.5 sensor for comparison |
 | `outdoor_pm1_entity` | string | No | - | Outdoor PM1 sensor for comparison |
@@ -113,6 +133,80 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 
 \* At least one sensor entity is required. Use any combination that fits your setup.
 
+### Air Quality Index entity
+
+The optional `air_quality_entity` is a **passthrough**: whatever value the entity reports is shown directly on the status badge (lowercased and mapped to a color based on standard HA AQI states — `good` / `moderate` / `fair` / `poor` / `very_poor` / `extremely_poor`). The card doesn't interpret it as indoor or outdoor — use whichever entity fits your dashboard.
+
+If you leave it unset, the card computes the status itself from your configured CO / CO₂ / PM2.5 / radon sensors (CO and radon are prioritized as life-safety/health concerns).
+
+### Sensor Order
+
+Customize which sensors come first on the card. In the visual editor, use the multi-select to tick metrics in the order you want them shown. In YAML, provide a list of metric names. Any metric you don't list keeps its default position and stays visible.
+
+Valid metric names: `co`, `radon`, `co2`, `pm25`, `pm10`, `pm1`, `pm03`, `pm4`, `hcho`, `tvoc`, `nox`, `humidity`, `temperature`.
+
+```yaml
+type: custom:air-quality-card
+co2_entity: sensor.air_quality_co2
+humidity_entity: sensor.air_quality_humidity
+temperature_entity: sensor.air_quality_temp
+pm10_entity: sensor.air_quality_pm10
+pm25_entity: sensor.air_quality_pm25
+order:
+  - temperature
+  - humidity
+  - co2
+  - pm10
+  - pm25
+```
+
+### Compact Display Mode
+
+For overview dashboards where you want a small "go to the air quality page" indicator, use `display: compact`. Renders just the title and the overall status badge, with optional [HA tap actions](https://www.home-assistant.io/dashboards/actions/).
+
+```yaml
+type: custom:air-quality-card
+name: Air Quality
+co2_entity: sensor.air_quality_co2
+pm25_entity: sensor.air_quality_pm25
+display: compact
+tap_action:
+  action: navigate
+  navigation_path: /lovelace/air-quality
+```
+
+Compact mode:
+- Skips the history fetch (faster initial load)
+- Status badge updates in real-time from current sensor values
+- All three standard HA actions are supported: `tap_action`, `hold_action`, `double_tap_action`
+
+### Custom Thresholds
+
+The default thresholds follow WHO 2021 / ASHRAE / EPA guidelines, but you can override any of them. Provide an array of **4 ascending numbers** — these become the 5-tier boundaries (Excellent / Good / Moderate / Elevated / Poor for most metrics; see [Health Thresholds](#health-thresholds) for the labels per metric).
+
+```yaml
+type: custom:air-quality-card
+temperature_entity: sensor.living_room_temp
+temperature_unit: C
+# In tropical climates, 26-29 °C is comfortable AC territory
+temperature_thresholds: [22, 25, 28, 31]
+# Stricter PM2.5 expectations than WHO 24h guideline
+pm25_thresholds: [3, 8, 15, 25]
+```
+
+Notes:
+- All custom thresholds are in the same unit as your sensor reports. For radon, the thresholds are always in **Bq/m³** — the card converts your sensor value before comparison.
+- Invalid thresholds (wrong length, non-numeric, etc.) silently fall back to the defaults. No errors thrown.
+- Colors are not customizable — only the boundaries between them.
+
+### Language
+
+The card auto-detects your Home Assistant frontend language and translates the status badge, recommendations, recommendation subtitles, radon advisory titles, and editor labels. Translations included so far: **English, Spanish, French, German** (Spanish/French/German contributed by [@b0rv3g4r4](https://github.com/b0rv3g4r4) on PR #11).
+
+If auto-detection picks the wrong language, force one explicitly with `language: es` (or `en` / `fr` / `de`).
+
+To contribute a new language: open a PR adding a block to the `TRANSLATIONS` const in `air-quality-card.js`. Copy the `en:` block, rename the key (e.g. `it:` for Italian), and translate the values — keep the structure identical. English is the fallback for any missing key.
+
 ### Outdoor Sensors
 
 Configure outdoor sensor entities to see a **dashed comparison line** on each graph showing outdoor conditions alongside indoor readings. When outdoor sensors are configured:
@@ -121,6 +215,22 @@ Configure outdoor sensor entities to see a **dashed comparison line** on each gr
 - Hovering shows both indoor and outdoor values
 - Current outdoor values appear next to indoor readings
 - **Smart recommendations** avoid suggesting ventilation when outdoor air is worse (e.g., "Keep Windows Closed" instead of "Open Window")
+
+### Outdoor-Only Mode
+
+If you're using the card to monitor **only outdoor air quality** (e.g., a weather station or DIY ESPHome ambient sensor), you can configure just the `outdoor_*_entity` options. The card will:
+
+- Render outdoor entities as primary graph lines
+- Compute the status badge from the outdoor values using the same WHO thresholds
+- **Hide the recommendation strip** — actions like "Open Window" or "Run Air Purifier" don't apply to ambient air
+
+```yaml
+type: custom:air-quality-card
+name: Outdoor Air Quality
+outdoor_pm25_entity: sensor.outdoor_pm25
+outdoor_pm10_entity: sensor.outdoor_pm10
+outdoor_temperature_entity: sensor.outdoor_temperature
+```
 
 ## Built-in Recommendations
 

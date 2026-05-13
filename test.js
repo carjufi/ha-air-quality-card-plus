@@ -493,6 +493,497 @@ try {
 assert(configValid, 'radon_longterm_entity alone is valid config');
 
 // ============================================================
+// STATUS LABEL TESTS (must match color thresholds)
+// ============================================================
+
+section('CO2 Status Label');
+assert(card._getCO2Status(400) === 'Excellent', 'CO2 400 = Excellent');
+assert(card._getCO2Status(599) === 'Excellent', 'CO2 599 = Excellent');
+assert(card._getCO2Status(600) === 'Good', 'CO2 600 = Good (boundary)');
+assert(card._getCO2Status(700) === 'Good', 'CO2 700 = Good');
+assert(card._getCO2Status(800) === 'Moderate', 'CO2 800 = Moderate (boundary, was missing tier)');
+assert(card._getCO2Status(900) === 'Moderate', 'CO2 900 = Moderate (was incorrectly "Good")');
+assert(card._getCO2Status(1000) === 'Elevated', 'CO2 1000 = Elevated (boundary)');
+assert(card._getCO2Status(1200) === 'Elevated', 'CO2 1200 = Elevated');
+assert(card._getCO2Status(1500) === 'Poor', 'CO2 1500 = Poor (boundary)');
+assert(card._getCO2Status(2000) === 'Poor', 'CO2 2000 = Poor');
+
+section('Humidity Status Label');
+assert(card._getHumidityStatus(20) === 'Too Dry', 'Humidity 20 = Too Dry');
+assert(card._getHumidityStatus(30) === 'Dry', 'Humidity 30 = Dry (boundary)');
+assert(card._getHumidityStatus(35) === 'Dry', 'Humidity 35 = Dry');
+assert(card._getHumidityStatus(40) === 'Comfortable', 'Humidity 40 = Comfortable (boundary)');
+assert(card._getHumidityStatus(45) === 'Comfortable', 'Humidity 45 = Comfortable');
+assert(card._getHumidityStatus(50) === 'Humid', 'Humidity 50 = Humid (boundary fix)');
+assert(card._getHumidityStatus(55) === 'Humid', 'Humidity 55 = Humid');
+assert(card._getHumidityStatus(60) === 'Too Humid', 'Humidity 60 = Too Humid (boundary fix)');
+assert(card._getHumidityStatus(70) === 'Too Humid', 'Humidity 70 = Too Humid');
+
+section('Temperature Status Label (Celsius)');
+card._config.temperature_unit = 'C';
+assert(card._getTempStatus(15) === 'Cold', 'Temp 15C = Cold');
+assert(card._getTempStatus(18) === 'Cool', 'Temp 18C = Cool (boundary)');
+assert(card._getTempStatus(19) === 'Cool', 'Temp 19C = Cool');
+assert(card._getTempStatus(20) === 'Comfortable', 'Temp 20C = Comfortable (boundary)');
+assert(card._getTempStatus(21) === 'Comfortable', 'Temp 21C = Comfortable');
+assert(card._getTempStatus(22) === 'Warm', 'Temp 22C = Warm (boundary fix)');
+assert(card._getTempStatus(23) === 'Warm', 'Temp 23C = Warm');
+assert(card._getTempStatus(24) === 'Hot', 'Temp 24C = Hot (boundary fix)');
+assert(card._getTempStatus(28) === 'Hot', 'Temp 28C = Hot');
+
+section('Temperature Status Label (Fahrenheit)');
+card._config.temperature_unit = 'F';
+assert(card._getTempStatus(60) === 'Cold', 'Temp 60F = Cold');
+assert(card._getTempStatus(65) === 'Cool', 'Temp 65F = Cool (boundary)');
+assert(card._getTempStatus(68) === 'Comfortable', 'Temp 68F = Comfortable (boundary)');
+assert(card._getTempStatus(70) === 'Comfortable', 'Temp 70F = Comfortable');
+assert(card._getTempStatus(72) === 'Warm', 'Temp 72F = Warm (boundary fix)');
+assert(card._getTempStatus(74) === 'Warm', 'Temp 74F = Warm');
+assert(card._getTempStatus(76) === 'Hot', 'Temp 76F = Hot (boundary fix)');
+assert(card._getTempStatus(80) === 'Hot', 'Temp 80F = Hot');
+card._config.temperature_unit = 'auto';
+
+// ============================================================
+// TIME-BASED GRAPH X COORDINATE TESTS (issue #22)
+// ============================================================
+
+section('Graph X by timestamp');
+
+// Setup a 24-hour window: start = 0, end = 86400000
+card._timeWindow = { start: 0, end: 86400000 };
+const W = 300, P = 2;
+
+assert(card._computeGraphX(0, W, P) === P, 'point at window start → x = padding');
+assert(card._computeGraphX(86400000, W, P) === W - P, 'point at window end → x = width - padding');
+assert(Math.abs(card._computeGraphX(43200000, W, P) - (W / 2)) < 0.001, 'point at midpoint → x ≈ width/2');
+
+// Points outside the window get clamped (defensive: API can occasionally return slightly out-of-range data)
+assert(card._computeGraphX(-1000, W, P) === P, 'point before start → clamped to padding');
+assert(card._computeGraphX(86400000 + 1000, W, P) === W - P, 'point after end → clamped to width-padding');
+
+// Unevenly sampled data: a spike at hour 4 of a 24h window must render at ~16.6% of width
+// (the bug that #22 reported: previously it would render based on data index, not timestamp)
+const fourHoursIn = 4 * 60 * 60 * 1000;
+const expectedX = P + (fourHoursIn / 86400000) * (W - 2 * P);
+assert(Math.abs(card._computeGraphX(fourHoursIn, W, P) - expectedX) < 0.001,
+  '4h-in spike renders at correct fractional X regardless of total data-point count');
+
+// Defensive: zero-span window doesn't NaN
+card._timeWindow = { start: 5000, end: 5000 };
+assert(card._computeGraphX(5000, W, P) === P, 'zero-span window does not produce NaN');
+
+// Defensive: missing time window doesn't crash
+card._timeWindow = null;
+assert(card._computeGraphX(12345, W, P) === P, 'missing time window returns padding instead of NaN');
+
+card._timeWindow = undefined;
+
+// ============================================================
+// OUTDOOR-ONLY MODE TESTS
+// ============================================================
+
+section('Outdoor-Only Mode');
+
+// Outdoor-only config is valid
+let outdoorOnlyCard = new CardClass();
+let outdoorOnlyValid = true;
+try {
+  outdoorOnlyCard.setConfig({ outdoor_pm25_entity: 'sensor.outdoor_pm25' });
+} catch (e) {
+  outdoorOnlyValid = false;
+}
+assert(outdoorOnlyValid, 'outdoor_pm25_entity alone is valid config');
+assert(outdoorOnlyCard._outdoorOnly === true, '_outdoorOnly flag set when only outdoor entities configured');
+assert(outdoorOnlyCard._config.pm25_entity === 'sensor.outdoor_pm25', 'outdoor_pm25_entity promoted to pm25_entity');
+assert(outdoorOnlyCard._config.outdoor_pm25_entity === undefined, 'outdoor_pm25_entity removed after promotion');
+
+// Multiple outdoor entities all promote
+const multiOutdoor = new CardClass();
+multiOutdoor.setConfig({
+  outdoor_co2_entity: 'sensor.out_co2',
+  outdoor_pm25_entity: 'sensor.out_pm25',
+  outdoor_temperature_entity: 'sensor.out_temp'
+});
+assert(multiOutdoor._outdoorOnly === true, 'multi-outdoor: _outdoorOnly true');
+assert(multiOutdoor._config.co2_entity === 'sensor.out_co2', 'outdoor_co2_entity promoted');
+assert(multiOutdoor._config.pm25_entity === 'sensor.out_pm25', 'outdoor_pm25_entity promoted');
+assert(multiOutdoor._config.temperature_entity === 'sensor.out_temp', 'outdoor_temperature_entity promoted');
+
+// Indoor + outdoor: no promotion, outdoor remains as overlay
+const mixed = new CardClass();
+mixed.setConfig({
+  pm25_entity: 'sensor.indoor_pm25',
+  outdoor_pm25_entity: 'sensor.outdoor_pm25'
+});
+assert(mixed._outdoorOnly === false, 'mixed indoor+outdoor: _outdoorOnly false');
+assert(mixed._config.pm25_entity === 'sensor.indoor_pm25', 'mixed: indoor entity preserved');
+assert(mixed._config.outdoor_pm25_entity === 'sensor.outdoor_pm25', 'mixed: outdoor stays for overlay');
+
+// Empty config still throws
+let emptyThrew = false;
+try {
+  new CardClass().setConfig({});
+} catch (e) {
+  emptyThrew = true;
+}
+assert(emptyThrew, 'empty config still throws');
+
+// Recommendations suppressed in outdoor-only mode
+const outdoorRec = new CardClass();
+outdoorRec.setConfig({ outdoor_co2_entity: 'sensor.out_co2' });
+outdoorRec._hass = card._hass;
+outdoorRec._hass.states['sensor.out_co2'] = { state: '2000', attributes: {} }; // would normally trigger "Ventilate Now"
+assert(outdoorRec._getRecommendation() === null, '_getRecommendation returns null in outdoor-only mode');
+
+// Recommendations work normally with indoor entity
+const indoorRec = new CardClass();
+indoorRec.setConfig({ co2_entity: 'sensor.in_co2' });
+indoorRec._hass = card._hass;
+indoorRec._hass.states['sensor.in_co2'] = { state: '2000', attributes: {} };
+assert(indoorRec._getRecommendation() === 'Ventilate Now', 'indoor mode: _getRecommendation works normally');
+
+// Restore card._config for downstream tests
+card._config = { name: 'Test', hours_to_show: 24, temperature_unit: 'auto' };
+card._outdoorOnly = false;
+
+// ============================================================
+// MIN/MAX HELPER TESTS (issue #23)
+// ============================================================
+
+section('Min/Max Helper');
+
+assert(card._getMinMax(null) === null, 'null data → null');
+assert(card._getMinMax([]) === null, 'empty array → null');
+
+const sample = [
+  { time: 1, value: 5 },
+  { time: 2, value: 10 },
+  { time: 3, value: 2 },
+  { time: 4, value: 8 }
+];
+const mm = card._getMinMax(sample);
+assert(mm && mm.min === 2, '_getMinMax min = 2');
+assert(mm && mm.max === 10, '_getMinMax max = 10');
+
+// Single-point edge case
+const single = card._getMinMax([{ time: 1, value: 7 }]);
+assert(single.min === 7 && single.max === 7, 'single point: min === max');
+
+// All same values
+const flat = card._getMinMax([{ time: 1, value: 4 }, { time: 2, value: 4 }, { time: 3, value: 4 }]);
+assert(flat.min === 4 && flat.max === 4, 'flat data: min === max');
+
+section('Graph value formatting');
+assert(card._formatGraphValue(5.4, 'ppm') === 5, 'ppm rounds');
+assert(card._formatGraphValue(5.4, 'ppb') === 5, 'ppb rounds');
+assert(card._formatGraphValue(5.4, 'Bq/m³') === 5, 'Bq/m³ rounds');
+assert(card._formatGraphValue(5.4, '°C') === 5, '°C rounds');
+assert(card._formatGraphValue(5.45, 'pCi/L') === '5.5', 'pCi/L 1 decimal (rounded)');
+assert(card._formatGraphValue(2.3, 'μg/m³') === '2.3', 'μg/m³ 1 decimal');
+
+// Default config has show_min_max: false (opt-in)
+const defaultCard = new CardClass();
+defaultCard.setConfig({ co2_entity: 'sensor.co2' });
+assert(defaultCard._config.show_min_max === false, 'show_min_max defaults to false');
+
+// User can opt in
+const minMaxCard = new CardClass();
+minMaxCard.setConfig({ co2_entity: 'sensor.co2', show_min_max: true });
+assert(minMaxCard._config.show_min_max === true, 'show_min_max can be enabled');
+
+// ============================================================
+// METRIC ORDERING (issue #19)
+// ============================================================
+
+section('Metric order — default');
+
+const defaultOrderCard = new CardClass();
+defaultOrderCard.setConfig({ co2_entity: 'sensor.co2' });
+const defaultOrder = defaultOrderCard._getMetricOrder();
+assert(defaultOrder[0] === 'co', 'default order: co first');
+assert(defaultOrder[defaultOrder.length - 1] === 'temperature', 'default order: temperature last');
+assert(defaultOrder.length === 13, 'default order: all 13 metrics');
+
+section('Metric order — user override');
+
+const reorderedCard = new CardClass();
+reorderedCard.setConfig({
+  co2_entity: 'sensor.co2',
+  order: ['temperature', 'humidity', 'co2', 'pm10', 'pm25']
+});
+const reordered = reorderedCard._getMetricOrder();
+assert(reordered[0] === 'temperature', 'user order: temperature first');
+assert(reordered[1] === 'humidity', 'user order: humidity second');
+assert(reordered[2] === 'co2', 'user order: co2 third');
+assert(reordered[3] === 'pm10', 'user order: pm10 fourth');
+assert(reordered[4] === 'pm25', 'user order: pm25 fifth');
+// Unmentioned metrics get appended in default order — user never loses a sensor
+assert(reordered.includes('radon'), 'unmentioned metrics still present');
+assert(reordered.length === 13, 'user order: total still 13');
+
+section('Metric order — invalid input');
+
+const badOrderCard = new CardClass();
+badOrderCard.setConfig({ co2_entity: 'sensor.co2', order: 'not an array' });
+const fallback = badOrderCard._getMetricOrder();
+assert(fallback[0] === 'co', 'non-array order falls back to defaults');
+
+const partialBadCard = new CardClass();
+partialBadCard.setConfig({
+  co2_entity: 'sensor.co2',
+  order: ['temperature', 'invalid_metric', 'co2']
+});
+const filtered = partialBadCard._getMetricOrder();
+assert(filtered.indexOf('temperature') === 0, 'invalid metrics are dropped, valid ones preserved');
+assert(filtered.indexOf('co2') === 1, 'invalid entries skipped in order');
+assert(!filtered.includes('invalid_metric'), 'invalid metric never appears');
+
+const emptyOrderCard = new CardClass();
+emptyOrderCard.setConfig({ co2_entity: 'sensor.co2', order: [] });
+assert(emptyOrderCard._getMetricOrder()[0] === 'co', 'empty array → default order');
+
+// ============================================================
+// COMPACT DISPLAY MODE (issue #20)
+// ============================================================
+
+section('Compact mode — config');
+
+const compactCard = new CardClass();
+compactCard.setConfig({ co2_entity: 'sensor.co2', display: 'compact' });
+assert(compactCard._config.display === 'compact', 'display: compact accepted');
+assert(compactCard._isCompact() === true, '_isCompact() true for compact display');
+
+const fullCard = new CardClass();
+fullCard.setConfig({ co2_entity: 'sensor.co2' });
+assert(fullCard._config.display === 'full', 'display defaults to full');
+assert(fullCard._isCompact() === false, '_isCompact() false for default display');
+
+// Card size: compact should be smaller
+assert(compactCard.getCardSize() === 1, 'compact getCardSize = 1');
+assert(fullCard.getCardSize() >= 3, 'full getCardSize ≥ 3');
+
+section('Compact mode — tap actions');
+
+// _fireAction is a no-op when the corresponding action isn't configured
+const noAction = new CardClass();
+noAction.setConfig({ co2_entity: 'sensor.co2', display: 'compact' });
+let dispatched = null;
+noAction.dispatchEvent = (event) => { dispatched = event; };
+noAction._fireAction('tap');
+assert(dispatched === null, 'no tap_action configured → no event dispatched');
+
+// When tap_action IS configured, hass-action event is dispatched with the right detail
+const withTap = new CardClass();
+withTap.setConfig({
+  co2_entity: 'sensor.co2',
+  display: 'compact',
+  tap_action: { action: 'navigate', navigation_path: '/lovelace/air-quality' }
+});
+let captured = null;
+withTap.dispatchEvent = (event) => { captured = event; };
+withTap._fireAction('tap');
+// Note: in node's mocked CustomEvent, we don't get the full event API, but we can
+// verify _fireAction's dispatch logic was reached by side-effect (captured set).
+assert(captured !== null, 'tap_action configured → event dispatched');
+
+// hold_action and double_tap_action also work
+const withHold = new CardClass();
+withHold.setConfig({
+  co2_entity: 'sensor.co2',
+  display: 'compact',
+  hold_action: { action: 'more-info' }
+});
+let held = null;
+withHold.dispatchEvent = (event) => { held = event; };
+withHold._fireAction('hold');
+assert(held !== null, 'hold_action configured → event dispatched');
+
+// _fireAction does nothing if the specific action isn't configured (tap_action set, hold_action not)
+const onlyTap = new CardClass();
+onlyTap.setConfig({
+  co2_entity: 'sensor.co2',
+  display: 'compact',
+  tap_action: { action: 'more-info' }
+});
+let unwanted = null;
+onlyTap.dispatchEvent = (event) => { unwanted = event; };
+onlyTap._fireAction('hold');
+assert(unwanted === null, 'tap_action set but hold_action absent → no hold event');
+
+// ============================================================
+// CUSTOM THRESHOLDS (issues #21 / #24)
+// ============================================================
+
+section('Custom Thresholds — CO2');
+const co2Custom = new CardClass();
+co2Custom.setConfig({ co2_entity: 'sensor.co2', co2_thresholds: [500, 700, 900, 1200] });
+assert(co2Custom._getCO2Color(450) === '#4caf50', 'custom CO2: 450 < 500 → green');
+assert(co2Custom._getCO2Color(550) === '#8bc34a', 'custom CO2: 550 < 700 → light green');
+assert(co2Custom._getCO2Color(800) === '#ffc107', 'custom CO2: 800 < 900 → yellow');
+assert(co2Custom._getCO2Color(1000) === '#ff9800', 'custom CO2: 1000 < 1200 → orange');
+assert(co2Custom._getCO2Color(1500) === '#f44336', 'custom CO2: 1500 → red');
+assert(co2Custom._getMetricStatus('co2', 800) === 'Moderate', 'custom CO2 status follows custom thresholds');
+// Original defaults still work for cards without override
+const co2Default = new CardClass();
+co2Default.setConfig({ co2_entity: 'sensor.co2' });
+assert(co2Default._getCO2Color(700) === '#8bc34a', 'unchanged default behavior (CO2 700 = light green)');
+assert(co2Default._getCO2Color(900) === '#ffc107', 'unchanged default behavior (CO2 900 = yellow)');
+
+section('Custom Thresholds — Temperature (Brad in Thailand)');
+const tempThai = new CardClass();
+// Brad keeps AC at 26-29 °C; with custom thresholds, 28 °C reads as Comfortable, not Hot
+tempThai.setConfig({ temperature_entity: 'sensor.t', temperature_unit: 'C', temperature_thresholds: [22, 25, 28, 31] });
+assert(tempThai._getTempColor(20) === '#2196f3', 'Thai temp 20°C = blue (Cold)');
+assert(tempThai._getTempColor(26) === '#4caf50', 'Thai temp 26°C = green (Comfortable)');
+assert(tempThai._getTempColor(28) === '#ff9800', 'Thai temp 28°C = orange (Warm)');
+assert(tempThai._getTempColor(32) === '#f44336', 'Thai temp 32°C = red (Hot)');
+assert(tempThai._getMetricStatus('temp_c', 28) === 'Warm', 'Thai temp 28°C status = Warm');
+
+section('Custom Thresholds — Humidity');
+const humidCustom = new CardClass();
+humidCustom.setConfig({ humidity_entity: 'sensor.h', humidity_thresholds: [25, 35, 55, 65] });
+assert(humidCustom._getHumidityColor(20) === '#ff9800', 'custom humidity 20 = too dry');
+assert(humidCustom._getHumidityColor(30) === '#8bc34a', 'custom humidity 30 = dry');
+assert(humidCustom._getHumidityColor(45) === '#4caf50', 'custom humidity 45 = comfortable');
+assert(humidCustom._getHumidityColor(60) === '#8bc34a', 'custom humidity 60 = humid');
+assert(humidCustom._getHumidityColor(70) === '#ff9800', 'custom humidity 70 = too humid');
+
+section('Custom Thresholds — PM2.5 (single override)');
+const pmCustom = new CardClass();
+pmCustom.setConfig({ pm25_entity: 'sensor.pm25', pm25_thresholds: [3, 8, 15, 25] });
+assert(pmCustom._getPM25Color(2) === '#4caf50', 'custom PM2.5 2 = green');
+assert(pmCustom._getPM25Color(20) === '#ff9800', 'custom PM2.5 20 = orange');
+// Other metrics still use defaults
+assert(pmCustom._getCO2Color(700) === '#8bc34a', 'PM override does not affect CO2 defaults');
+
+section('Custom Thresholds — Validation (invalid input falls back to defaults)');
+const invalidCard = new CardClass();
+invalidCard.setConfig({ co2_entity: 'sensor.co2', co2_thresholds: [600, 800] }); // too few
+assert(invalidCard._getCO2Color(700) === '#8bc34a', 'too-few thresholds → fall back to defaults');
+
+const wrongType = new CardClass();
+wrongType.setConfig({ co2_entity: 'sensor.co2', co2_thresholds: 'not an array' });
+assert(wrongType._getCO2Color(700) === '#8bc34a', 'non-array thresholds → defaults');
+
+const mixedType = new CardClass();
+mixedType.setConfig({ co2_entity: 'sensor.co2', co2_thresholds: [600, '800', 1000, 1500] });
+assert(mixedType._getCO2Color(700) === '#8bc34a', 'mixed-type thresholds → defaults');
+
+section('Custom Thresholds — tVOC (mode-specific)');
+const tvocPpb = new CardClass();
+tvocPpb.setConfig({ tvoc_entity: 'sensor.tvoc', tvoc_unit: 'ppb', tvoc_thresholds: [50, 150, 300, 600] });
+assert(tvocPpb._getTVOCColor(100) === '#8bc34a', 'tVOC ppb 100 < 150 = light green (custom)');
+assert(tvocPpb._getTVOCColor(700) === '#f44336', 'tVOC ppb 700 > 600 = red (custom)');
+
+const tvocIndex = new CardClass();
+tvocIndex.setConfig({ tvoc_entity: 'sensor.tvoc', tvoc_unit: 'index', tvoc_thresholds: [80, 130, 200, 350] });
+assert(tvocIndex._getTVOCColor(100) === '#8bc34a', 'tVOC index 100 < 130 = light green (custom)');
+
+// ============================================================
+// LOCALIZATION (issue #10, supersedes PR #11)
+// ============================================================
+
+section('Language resolution');
+
+// Default behavior: no language config, no hass.locale → English
+const enCard = new CardClass();
+enCard.setConfig({ co2_entity: 'sensor.co2' });
+enCard._hass = { config: { unit_system: { temperature: '°F' } }, states: {} };
+assert(enCard._resolveLanguage() === 'en', 'default → en');
+
+// hass.locale.language wins (modern HA)
+enCard._hass = { config: { unit_system: { temperature: '°F' } }, states: {}, locale: { language: 'es' } };
+assert(enCard._resolveLanguage() === 'es', 'hass.locale.language → es');
+
+// hass.language fallback (older HA)
+enCard._hass = { config: { unit_system: { temperature: '°F' } }, states: {}, language: 'fr' };
+assert(enCard._resolveLanguage() === 'fr', 'hass.language fallback → fr');
+
+// Explicit config wins over both
+enCard._hass = { config: { unit_system: { temperature: '°F' } }, states: {}, locale: { language: 'es' } };
+enCard._config.language = 'de';
+assert(enCard._resolveLanguage() === 'de', 'config.language overrides hass.locale.language');
+
+// Unknown language falls back to en
+enCard._config.language = 'xx';
+assert(enCard._resolveLanguage() === 'en', 'unknown language → en fallback');
+
+// Regional code is stripped (e.g. en-US → en)
+enCard._config.language = 'auto';
+enCard._hass = { config: { unit_system: { temperature: '°F' } }, states: {}, locale: { language: 'es-MX' } };
+assert(enCard._resolveLanguage() === 'es', 'es-MX → es (regional code stripped)');
+
+section('Translation lookup');
+
+// English baseline
+enCard._config.language = 'en';
+assert(enCard._t('status', 'excellent') === 'Excellent', 'en status: excellent');
+assert(enCard._t('status', 'poor') === 'Poor', 'en status: poor');
+assert(enCard._t('recommendation', 'open_window') === 'Open Window', 'en recommendation: open_window');
+
+// Spanish
+enCard._config.language = 'es';
+assert(enCard._t('status', 'excellent') === 'Excelente', 'es status: Excelente');
+assert(enCard._t('status', 'poor') === 'Malo', 'es status: Malo');
+assert(enCard._t('recommendation', 'open_window') === 'Abre la ventana', 'es recommendation: Abre la ventana');
+
+// French
+enCard._config.language = 'fr';
+assert(enCard._t('status', 'excellent') === 'Excellent', 'fr status: Excellent');
+assert(enCard._t('recommendation', 'run_air_purifier') === 'Utiliser le purificateur', 'fr recommendation: Utiliser le purificateur');
+
+// German
+enCard._config.language = 'de';
+assert(enCard._t('status', 'good') === 'Gut', 'de status: Gut');
+assert(enCard._t('recommendation', 'all_good') === 'Alles gut', 'de recommendation: Alles gut');
+
+// Missing key falls back to English
+enCard._config.language = 'es';
+assert(enCard._t('status', 'not_a_real_key') === 'not_a_real_key', 'unknown key returns the key itself');
+
+section('Interpolation (_ts)');
+enCard._config.language = 'en';
+assert(enCard._ts('subtitle', 'co_danger', { value: 42 }) === 'CO at 42 ppm — dangerous levels detected', 'en interpolated subtitle');
+enCard._config.language = 'es';
+assert(enCard._ts('subtitle', 'co_danger', { value: 42 }) === 'CO en 42 ppm — niveles peligrosos detectados', 'es interpolated subtitle');
+
+section('Overall status reflects language');
+
+// Reuse the existing setup pattern
+function aqCardWithLang(lang) {
+  const c = new CardClass();
+  c.setConfig({ co2_entity: 'sensor.co2', language: lang });
+  c._hass = { config: { unit_system: { temperature: '°F' } }, states: { 'sensor.co2': { state: '2000' } } };
+  return c;
+}
+
+assert(aqCardWithLang('en')._getOverallStatus().status === 'Poor', 'en: 2000ppm → Poor');
+assert(aqCardWithLang('es')._getOverallStatus().status === 'Malo', 'es: 2000ppm → Malo');
+assert(aqCardWithLang('fr')._getOverallStatus().status === 'Mauvais', 'fr: 2000ppm → Mauvais');
+assert(aqCardWithLang('de')._getOverallStatus().status === 'Schlecht', 'de: 2000ppm → Schlecht');
+
+section('Recommendation key + translation');
+
+function recCardWithLang(lang, co2) {
+  const c = new CardClass();
+  c.setConfig({ co2_entity: 'sensor.co2', language: lang });
+  c._hass = { config: { unit_system: { temperature: '°F' } }, states: { 'sensor.co2': { state: String(co2) } } };
+  return c;
+}
+
+assert(recCardWithLang('en', 2000)._getRecommendationKey() === 'ventilate_now', 'key for high CO2 = ventilate_now');
+assert(recCardWithLang('en', 2000)._getRecommendation() === 'Ventilate Now', 'en rec text: Ventilate Now');
+assert(recCardWithLang('es', 2000)._getRecommendation() === 'Ventila ahora', 'es rec text: Ventila ahora');
+assert(recCardWithLang('de', 2000)._getRecommendation() === 'Jetzt lüften', 'de rec text: Jetzt lüften');
+
+// Icon resolution works with both key (preferred) and English text (backward-compat)
+assert(recCardWithLang('en', 2000)._getRecommendationIcon('ventilate_now') === 'mdi:alert-circle', 'icon by key');
+assert(recCardWithLang('en', 2000)._getRecommendationIcon('Ventilate Now') === 'mdi:alert-circle', 'icon by English text (backward-compat)');
+
+// Reset card._config for downstream tests
+card._config = { name: 'Test', hours_to_show: 24, temperature_unit: 'auto' };
+
+// ============================================================
 // CARD SIZE TESTS
 // ============================================================
 
@@ -545,7 +1036,7 @@ const allLabels = [
   'outdoor_co2_entity', 'outdoor_pm25_entity', 'outdoor_humidity_entity', 'outdoor_temperature_entity',
   'outdoor_co_entity', 'outdoor_hcho_entity', 'outdoor_tvoc_entity',
   'outdoor_pm1_entity', 'outdoor_pm10_entity', 'outdoor_pm03_entity',
-  'air_quality_entity', 'hours_to_show', 'temperature_unit', 'radon_unit'
+  'air_quality_entity', 'hours_to_show', 'temperature_unit', 'radon_unit', 'show_min_max'
 ];
 for (const name of allLabels) {
   const label = editor._computeLabel({ name });
