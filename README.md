@@ -96,7 +96,7 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 | `tvoc_entity` | string | No* | - | Volatile organic compounds (tVOC) sensor entity ID |
 | `humidity_entity` | string | No* | - | Humidity sensor entity ID |
 | `temperature_entity` | string | No* | - | Temperature sensor entity ID |
-| `air_quality_entity` | string | No | - | Overall air quality index entity |
+| `air_quality_entity` | string | No | - | Overall air quality index entity ([passthrough — see below](#air-quality-index-entity)) |
 | `hours_to_show` | number | No | 24 | Hours of history to display (1-168) |
 | `temperature_unit` | string | No | "auto" | Temperature unit: "auto" (detect from HA), "F" (Fahrenheit), or "C" (Celsius) |
 | `radon_unit` | string | No | "auto" | Radon unit: "auto" (detect from sensor), "pCi/L" (US), or "Bq/m3" (International) |
@@ -132,6 +132,12 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 | `outdoor_temperature_entity` | string | No | - | Outdoor temperature sensor for comparison |
 
 \* At least one sensor entity is required. Use any combination that fits your setup.
+
+### Air Quality Index entity
+
+The optional `air_quality_entity` is a **passthrough**: whatever value the entity reports is shown directly on the status badge (lowercased and mapped to a color based on standard HA AQI states — `good` / `moderate` / `fair` / `poor` / `very_poor` / `extremely_poor`). The card doesn't interpret it as indoor or outdoor — use whichever entity fits your dashboard.
+
+If you leave it unset, the card computes the status itself from your configured CO / CO₂ / PM2.5 / radon sensors (CO and radon are prioritized as life-safety/health concerns).
 
 ### Sensor Order
 
