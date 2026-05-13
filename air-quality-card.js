@@ -66,6 +66,28 @@ class AirQualityCard extends HTMLElement {
     this._updateStates();
   }
 
+  // Resolve the metric display order. User's `order` wins; anything they
+  // didn't list is appended in the default order so users never lose a
+  // configured metric by forgetting to mention it.
+  _getMetricOrder() {
+    const all = ['co', 'radon', 'co2', 'pm25', 'pm10', 'pm1', 'pm03', 'pm4', 'hcho', 'tvoc', 'nox', 'humidity', 'temperature'];
+    if (!Array.isArray(this._config.order) || !this._config.order.length) return all;
+    const valid = this._config.order.filter(m => all.includes(m));
+    const remaining = all.filter(m => !valid.includes(m));
+    return [...valid, ...remaining];
+  }
+
+  // Reorder graph cards via flexbox `order` rather than rebuilding the DOM —
+  // .graphs is already display:flex, so setting style.order on each container
+  // is enough to reflow them visually.
+  _applyMetricOrder() {
+    if (!Array.isArray(this._config.order) || !this._config.order.length) return;
+    this._getMetricOrder().forEach((metric, idx) => {
+      const container = this.shadowRoot.getElementById(`${metric}-graph-container`);
+      if (container) container.style.order = idx;
+    });
+  }
+
   getCardSize() {
     let size = 3; // Base size for header and recommendation
     if (this._config.co_entity) size += 1;
@@ -1113,6 +1135,8 @@ class AirQualityCard extends HTMLElement {
         </div>
       </ha-card>
     `;
+
+    this._applyMetricOrder();
   }
 
   _updateStates() {
@@ -1887,7 +1911,8 @@ if (LitElement && !customElements.get('air-quality-card-editor')) {
         hours_to_show: 'Graph History',
         temperature_unit: 'Temperature Unit',
         radon_unit: 'Radon Unit',
-        tvoc_unit: 'tVOC Measurement Type'
+        tvoc_unit: 'tVOC Measurement Type',
+        order: 'Sensor Order (list of metric names)'
       };
       return labels[schema.name] || schema.name;
     }
@@ -2000,6 +2025,7 @@ if (LitElement && !customElements.get('air-quality-card-editor')) {
           schema: [
             { name: 'air_quality_entity', selector: { entity: { domain: 'sensor' } } },
             { name: 'hours_to_show', selector: { number: { min: 1, max: 168, mode: 'box', unit_of_measurement: 'hours' } } },
+            { name: 'order', selector: { object: {} } },
             { name: 'temperature_unit', selector: { select: { options: [{ value: 'auto', label: 'Auto (from HA)' }, { value: 'F', label: 'Fahrenheit (°F)' }, { value: 'C', label: 'Celsius (°C)' }], mode: 'dropdown' } } },
             { name: 'radon_unit', selector: { select: { options: [{ value: 'auto', label: 'Auto (from sensor)' }, { value: 'pCi/L', label: 'pCi/L (US)' }, { value: 'Bq/m³', label: 'Bq/m³ (International)' }], mode: 'dropdown' } } },
             { name: 'tvoc_unit', selector: { select: { options: [{ value: 'auto', label: 'Auto-detect' }, { value: 'ppb', label: 'Absolute (ppb)' }, { value: 'index', label: 'VOC Index (Sensirion)' }], mode: 'dropdown' } } },
