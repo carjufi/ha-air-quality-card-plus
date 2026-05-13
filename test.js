@@ -811,6 +811,75 @@ onlyTap._fireAction('hold');
 assert(unwanted === null, 'tap_action set but hold_action absent → no hold event');
 
 // ============================================================
+// CUSTOM THRESHOLDS (issues #21 / #24)
+// ============================================================
+
+section('Custom Thresholds — CO2');
+const co2Custom = new CardClass();
+co2Custom.setConfig({ co2_entity: 'sensor.co2', co2_thresholds: [500, 700, 900, 1200] });
+assert(co2Custom._getCO2Color(450) === '#4caf50', 'custom CO2: 450 < 500 → green');
+assert(co2Custom._getCO2Color(550) === '#8bc34a', 'custom CO2: 550 < 700 → light green');
+assert(co2Custom._getCO2Color(800) === '#ffc107', 'custom CO2: 800 < 900 → yellow');
+assert(co2Custom._getCO2Color(1000) === '#ff9800', 'custom CO2: 1000 < 1200 → orange');
+assert(co2Custom._getCO2Color(1500) === '#f44336', 'custom CO2: 1500 → red');
+assert(co2Custom._getMetricStatus('co2', 800) === 'Moderate', 'custom CO2 status follows custom thresholds');
+// Original defaults still work for cards without override
+const co2Default = new CardClass();
+co2Default.setConfig({ co2_entity: 'sensor.co2' });
+assert(co2Default._getCO2Color(700) === '#8bc34a', 'unchanged default behavior (CO2 700 = light green)');
+assert(co2Default._getCO2Color(900) === '#ffc107', 'unchanged default behavior (CO2 900 = yellow)');
+
+section('Custom Thresholds — Temperature (Brad in Thailand)');
+const tempThai = new CardClass();
+// Brad keeps AC at 26-29 °C; with custom thresholds, 28 °C reads as Comfortable, not Hot
+tempThai.setConfig({ temperature_entity: 'sensor.t', temperature_unit: 'C', temperature_thresholds: [22, 25, 28, 31] });
+assert(tempThai._getTempColor(20) === '#2196f3', 'Thai temp 20°C = blue (Cold)');
+assert(tempThai._getTempColor(26) === '#4caf50', 'Thai temp 26°C = green (Comfortable)');
+assert(tempThai._getTempColor(28) === '#ff9800', 'Thai temp 28°C = orange (Warm)');
+assert(tempThai._getTempColor(32) === '#f44336', 'Thai temp 32°C = red (Hot)');
+assert(tempThai._getMetricStatus('temp_c', 28) === 'Warm', 'Thai temp 28°C status = Warm');
+
+section('Custom Thresholds — Humidity');
+const humidCustom = new CardClass();
+humidCustom.setConfig({ humidity_entity: 'sensor.h', humidity_thresholds: [25, 35, 55, 65] });
+assert(humidCustom._getHumidityColor(20) === '#ff9800', 'custom humidity 20 = too dry');
+assert(humidCustom._getHumidityColor(30) === '#8bc34a', 'custom humidity 30 = dry');
+assert(humidCustom._getHumidityColor(45) === '#4caf50', 'custom humidity 45 = comfortable');
+assert(humidCustom._getHumidityColor(60) === '#8bc34a', 'custom humidity 60 = humid');
+assert(humidCustom._getHumidityColor(70) === '#ff9800', 'custom humidity 70 = too humid');
+
+section('Custom Thresholds — PM2.5 (single override)');
+const pmCustom = new CardClass();
+pmCustom.setConfig({ pm25_entity: 'sensor.pm25', pm25_thresholds: [3, 8, 15, 25] });
+assert(pmCustom._getPM25Color(2) === '#4caf50', 'custom PM2.5 2 = green');
+assert(pmCustom._getPM25Color(20) === '#ff9800', 'custom PM2.5 20 = orange');
+// Other metrics still use defaults
+assert(pmCustom._getCO2Color(700) === '#8bc34a', 'PM override does not affect CO2 defaults');
+
+section('Custom Thresholds — Validation (invalid input falls back to defaults)');
+const invalidCard = new CardClass();
+invalidCard.setConfig({ co2_entity: 'sensor.co2', co2_thresholds: [600, 800] }); // too few
+assert(invalidCard._getCO2Color(700) === '#8bc34a', 'too-few thresholds → fall back to defaults');
+
+const wrongType = new CardClass();
+wrongType.setConfig({ co2_entity: 'sensor.co2', co2_thresholds: 'not an array' });
+assert(wrongType._getCO2Color(700) === '#8bc34a', 'non-array thresholds → defaults');
+
+const mixedType = new CardClass();
+mixedType.setConfig({ co2_entity: 'sensor.co2', co2_thresholds: [600, '800', 1000, 1500] });
+assert(mixedType._getCO2Color(700) === '#8bc34a', 'mixed-type thresholds → defaults');
+
+section('Custom Thresholds — tVOC (mode-specific)');
+const tvocPpb = new CardClass();
+tvocPpb.setConfig({ tvoc_entity: 'sensor.tvoc', tvoc_unit: 'ppb', tvoc_thresholds: [50, 150, 300, 600] });
+assert(tvocPpb._getTVOCColor(100) === '#8bc34a', 'tVOC ppb 100 < 150 = light green (custom)');
+assert(tvocPpb._getTVOCColor(700) === '#f44336', 'tVOC ppb 700 > 600 = red (custom)');
+
+const tvocIndex = new CardClass();
+tvocIndex.setConfig({ tvoc_entity: 'sensor.tvoc', tvoc_unit: 'index', tvoc_thresholds: [80, 130, 200, 350] });
+assert(tvocIndex._getTVOCColor(100) === '#8bc34a', 'tVOC index 100 < 130 = light green (custom)');
+
+// ============================================================
 // CARD SIZE TESTS
 // ============================================================
 

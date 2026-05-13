@@ -106,6 +106,19 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 | `tap_action` | action | No | - | Standard HA action object (e.g., `{ action: navigate, navigation_path: /air-quality }`). Active in compact mode |
 | `hold_action` | action | No | - | Same as `tap_action` but fired after holding for ~500 ms |
 | `double_tap_action` | action | No | - | Same as `tap_action` but fired on double-tap |
+| `co_thresholds` | array | No | `[4, 9, 35, 100]` | Custom CO color/status thresholds (4 ascending numbers defining 5 tiers) |
+| `co2_thresholds` | array | No | `[600, 800, 1000, 1500]` | Custom CO₂ color/status thresholds |
+| `pm25_thresholds` | array | No | `[5, 15, 25, 35]` | Custom PM2.5 thresholds |
+| `pm10_thresholds` | array | No | `[15, 45, 75, 150]` | Custom PM10 thresholds |
+| `pm1_thresholds` | array | No | `[5, 15, 25, 35]` | Custom PM1 thresholds |
+| `pm03_thresholds` | array | No | `[500, 1000, 3000, 5000]` | Custom PM0.3 thresholds |
+| `pm4_thresholds` | array | No | `[10, 25, 37.5, 50]` | Custom PM4 thresholds |
+| `hcho_thresholds` | array | No | `[20, 50, 100, 200]` | Custom HCHO thresholds (ppb) |
+| `tvoc_thresholds` | array | No | mode-dependent | Custom tVOC thresholds (units depend on `tvoc_unit`) |
+| `nox_thresholds` | array | No | `[20, 50, 150, 250]` | Custom NOx thresholds (ppb) |
+| `radon_thresholds` | array | No | `[48, 100, 148, 300]` | Custom radon thresholds (Bq/m³ — even if you display in pCi/L) |
+| `humidity_thresholds` | array | No | `[30, 40, 50, 60]` | Custom humidity thresholds (%) |
+| `temperature_thresholds` | array | No | unit-dependent | Custom temperature thresholds (in the unit your sensor reports) |
 | `outdoor_co2_entity` | string | No | - | Outdoor CO2 sensor for comparison |
 | `outdoor_pm25_entity` | string | No | - | Outdoor PM2.5 sensor for comparison |
 | `outdoor_pm1_entity` | string | No | - | Outdoor PM1 sensor for comparison |
@@ -160,6 +173,24 @@ Compact mode:
 - Status badge updates in real-time from current sensor values
 - All three standard HA actions are supported: `tap_action`, `hold_action`, `double_tap_action`
 
+### Custom Thresholds
+
+The default thresholds follow WHO 2021 / ASHRAE / EPA guidelines, but you can override any of them. Provide an array of **4 ascending numbers** — these become the 5-tier boundaries (Excellent / Good / Moderate / Elevated / Poor for most metrics; see [Health Thresholds](#health-thresholds) for the labels per metric).
+
+```yaml
+type: custom:air-quality-card
+temperature_entity: sensor.living_room_temp
+temperature_unit: C
+# In tropical climates, 26-29 °C is comfortable AC territory
+temperature_thresholds: [22, 25, 28, 31]
+# Stricter PM2.5 expectations than WHO 24h guideline
+pm25_thresholds: [3, 8, 15, 25]
+```
+
+Notes:
+- All custom thresholds are in the same unit as your sensor reports. For radon, the thresholds are always in **Bq/m³** — the card converts your sensor value before comparison.
+- Invalid thresholds (wrong length, non-numeric, etc.) silently fall back to the defaults. No errors thrown.
+- Colors are not customizable — only the boundaries between them.
 
 ### Outdoor Sensors
 
