@@ -100,7 +100,7 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 | `hours_to_show` | number | No | 24 | Hours of history to display (1-168) |
 | `temperature_unit` | string | No | "auto" | Temperature unit: "auto" (detect from HA), "F" (Fahrenheit), or "C" (Celsius) |
 | `radon_unit` | string | No | "auto" | Radon unit: "auto" (detect from sensor), "pCi/L" (US), or "Bq/m3" (International) |
-| `show_min_max` | boolean | No | `false` | Show the min/max value seen over the displayed time window beneath each metric |
+| `show_min_max` | boolean | No | `false` | Overlay the min/max values of the displayed time window directly at the data points on the graph |
 | `order` | array | No | default | Custom display order for metrics (see [Sensor Order](#sensor-order)) |
 | `display` | string | No | "full" | "full" (graphs and details) or "compact" (status badge only, ideal for overview pages) |
 | `tap_action` | action | No | - | Standard HA action object (e.g., `{ action: navigate, navigation_path: /air-quality }`). Active in compact mode |
@@ -135,7 +135,7 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 
 ### Sensor Order
 
-Customize which sensors come first on the card. Provide a list of metric names — any metric you don't list keeps its default position and stays visible.
+Customize which sensors come first on the card. In the visual editor, use the multi-select to tick metrics in the order you want them shown. In YAML, provide a list of metric names. Any metric you don't list keeps its default position and stays visible.
 
 Valid metric names: `co`, `radon`, `co2`, `pm25`, `pm10`, `pm1`, `pm03`, `pm4`, `hcho`, `tvoc`, `nox`, `humidity`, `temperature`.
 

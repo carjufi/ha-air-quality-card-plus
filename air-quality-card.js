@@ -235,23 +235,67 @@ class AirQualityCard extends HTMLElement {
     return value.toFixed(1);
   }
 
-  _updateMinMaxDisplay(graphId, data, unit) {
+  // Anchor min/max value labels to the actual data points on the line.
+  // The position percentages are computed against the SVG's 300×50 viewBox;
+  // because preserveAspectRatio="none" stretches the SVG to fill the wrapper,
+  // the same percentage maps cleanly to the wrapper's dimensions.
+  _updateMinMaxDisplay(graphId, data, colorFn) {
     const minMax = this._getMinMax(data);
-    if (!minMax) return;
-    const container = this.shadowRoot.getElementById(`${graphId}-graph-container`);
-    if (!container) return;
-    let minmaxEl = this.shadowRoot.getElementById(`${graphId}-minmax`);
-    if (!minmaxEl) {
-      const header = container.querySelector('.graph-header');
-      if (!header) return;
-      minmaxEl = document.createElement('div');
-      minmaxEl.className = 'graph-minmax';
-      minmaxEl.id = `${graphId}-minmax`;
-      header.insertAdjacentElement('afterend', minmaxEl);
+    if (!minMax || minMax.min === minMax.max) {
+      this._clearMinMaxMarkers(graphId);
+      return;
     }
-    const minStr = this._formatGraphValue(minMax.min, unit);
-    const maxStr = this._formatGraphValue(minMax.max, unit);
-    minmaxEl.innerHTML = `<span class="arrow">↓</span>${minStr} · <span class="arrow">↑</span>${maxStr} ${unit}`;
+    let minIdx = 0, maxIdx = 0;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i].value < data[minIdx].value) minIdx = i;
+      if (data[i].value > data[maxIdx].value) maxIdx = i;
+    }
+    const points = this._graphData[graphId] && this._graphData[graphId].points;
+    if (!points || !points.length) return;
+    const wrapper = this.shadowRoot.getElementById(`${graphId}-graph`);
+    if (!wrapper) return;
+
+    this._renderMinMaxMarker(graphId, 'max', points[maxIdx], colorFn(minMax.max), this._formatGraphValue(minMax.max, this._graphData[graphId].unit));
+    this._renderMinMaxMarker(graphId, 'min', points[minIdx], colorFn(minMax.min), this._formatGraphValue(minMax.min, this._graphData[graphId].unit));
+  }
+
+  _renderMinMaxMarker(graphId, kind, point, color, valueStr) {
+    if (!point) return;
+    const wrapper = this.shadowRoot.getElementById(`${graphId}-graph`);
+    if (!wrapper) return;
+    const id = `${graphId}-minmax-${kind}`;
+    let marker = this.shadowRoot.getElementById(id);
+    if (!marker) {
+      marker = document.createElement('div');
+      marker.id = id;
+      marker.className = `minmax-marker minmax-marker--${kind}`;
+      wrapper.appendChild(marker);
+    }
+    // Y position: point.y is in the 0..50 SVG coordinate system; convert to %
+    const leftPct = (point.x / 300) * 100;
+    const topPct = (point.y / 50) * 100;
+    // Flip the label across the chart vertical midline so it can't get
+    // clipped by the chart's top/bottom edge: anchor the label on the
+    // opposite side of the data point from where it sits.
+    const placeBelow = point.y < 25;
+    // Same idea for horizontal: when very close to an edge, anchor the
+    // label to that edge instead of centering on the point.
+    let anchor = 'center';
+    if (leftPct < 12) anchor = 'left';
+    else if (leftPct > 88) anchor = 'right';
+    marker.style.left = `${leftPct}%`;
+    marker.style.top = `${topPct}%`;
+    marker.style.color = color;
+    marker.dataset.place = placeBelow ? 'below' : 'above';
+    marker.dataset.anchor = anchor;
+    marker.textContent = valueStr;
+  }
+
+  _clearMinMaxMarkers(graphId) {
+    ['min', 'max'].forEach(kind => {
+      const el = this.shadowRoot.getElementById(`${graphId}-minmax-${kind}`);
+      if (el) el.remove();
+    });
   }
 
   _isCompact() {
@@ -1068,19 +1112,45 @@ class AirQualityCard extends HTMLElement {
           border-radius: 3px;
         }
 
-        .graph-minmax {
-          font-size: 0.7em;
-          color: var(--secondary-text-color);
-          opacity: 0.7;
-          text-align: right;
-          margin-top: -4px;
-          margin-bottom: 4px;
-          letter-spacing: 0.3px;
+        /* Min/max value labels overlaid on the graph at the actual data points
+           where the extremes occurred. The text-shadow halo lets them remain
+           legible regardless of where they land on the gradient fill. */
+        .minmax-marker {
+          position: absolute;
+          pointer-events: none;
+          font-size: 10px;
+          font-weight: 600;
+          letter-spacing: 0.2px;
+          font-variant-numeric: tabular-nums;
+          line-height: 1;
+          white-space: nowrap;
+          transform: translate(-50%, -100%);
+          margin-top: -6px;
+          text-shadow:
+            0 0 3px var(--ha-card-background, var(--card-background-color, #fff)),
+            0 0 6px var(--ha-card-background, var(--card-background-color, #fff)),
+            0 1px 2px var(--ha-card-background, var(--card-background-color, #fff));
+          opacity: 0.95;
         }
 
-        .graph-minmax .arrow {
-          font-weight: 600;
-          margin: 0 1px;
+        .minmax-marker[data-place="below"] {
+          transform: translate(-50%, 0);
+          margin-top: 6px;
+        }
+
+        /* When near a chart edge, anchor the label's side to the point rather
+           than centering on it — keeps text inside the chart. */
+        .minmax-marker[data-anchor="left"] {
+          transform: translate(0, -100%);
+        }
+        .minmax-marker[data-anchor="left"][data-place="below"] {
+          transform: translate(0, 0);
+        }
+        .minmax-marker[data-anchor="right"] {
+          transform: translate(-100%, -100%);
+        }
+        .minmax-marker[data-anchor="right"][data-place="below"] {
+          transform: translate(-100%, 0);
         }
 
         .graph-wrapper {
@@ -1897,10 +1967,6 @@ class AirQualityCard extends HTMLElement {
     const timeAxis = this.shadowRoot.getElementById(`${graphId}-time-axis`);
     if (!svg || !data.length) return;
 
-    if (this._config.show_min_max) {
-      this._updateMinMaxDisplay(graphId, data, unit);
-    }
-
     const width = 300;
     const height = 50;
     const padding = 2;
@@ -1931,6 +1997,12 @@ class AirQualityCard extends HTMLElement {
     }
 
     this._graphData[graphId] = { points, outdoorPoints, unit, colorFn, outdoorLabel: outdoorLabel || 'Outdoor' };
+
+    if (this._config.show_min_max) {
+      this._updateMinMaxDisplay(graphId, data, colorFn);
+    } else {
+      this._clearMinMaxMarkers(graphId);
+    }
 
     if (points.length < 2) return;
 
@@ -2371,7 +2443,21 @@ if (LitElement && !customElements.get('air-quality-card-editor')) {
             { name: 'air_quality_entity', selector: { entity: { domain: 'sensor' } } },
             { name: 'hours_to_show', selector: { number: { min: 1, max: 168, mode: 'box', unit_of_measurement: 'hours' } } },
             { name: 'show_min_max', selector: { boolean: {} } },
-            { name: 'order', selector: { object: {} } },
+            { name: 'order', selector: { select: { multiple: true, mode: 'list', options: [
+              { value: 'co', label: 'CO' },
+              { value: 'radon', label: 'Radon' },
+              { value: 'co2', label: 'CO₂' },
+              { value: 'pm25', label: 'PM2.5' },
+              { value: 'pm10', label: 'PM10' },
+              { value: 'pm1', label: 'PM1' },
+              { value: 'pm03', label: 'PM0.3' },
+              { value: 'pm4', label: 'PM4' },
+              { value: 'hcho', label: 'HCHO' },
+              { value: 'tvoc', label: 'tVOC' },
+              { value: 'nox', label: 'NOx' },
+              { value: 'humidity', label: 'Humidity' },
+              { value: 'temperature', label: 'Temperature' }
+            ] } } },
             { name: 'display', selector: { select: { options: [{ value: 'full', label: 'Full (graphs and details)' }, { value: 'compact', label: 'Compact (status badge only)' }], mode: 'dropdown' } } },
             { name: 'tap_action', selector: { ui_action: {} } },
             { name: 'hold_action', selector: { ui_action: {} } },
