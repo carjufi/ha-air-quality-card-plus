@@ -119,6 +119,7 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 | `radon_thresholds` | array | No | `[48, 100, 148, 300]` | Custom radon thresholds (Bq/m³ — even if you display in pCi/L) |
 | `humidity_thresholds` | array | No | `[30, 40, 50, 60]` | Custom humidity thresholds (%) |
 | `temperature_thresholds` | array | No | unit-dependent | Custom temperature thresholds (in the unit your sensor reports) |
+| `language` | string | No | "auto" | UI language. "auto" (use Home Assistant's), "en", "es", "fr", or "de" |
 | `outdoor_co2_entity` | string | No | - | Outdoor CO2 sensor for comparison |
 | `outdoor_pm25_entity` | string | No | - | Outdoor PM2.5 sensor for comparison |
 | `outdoor_pm1_entity` | string | No | - | Outdoor PM1 sensor for comparison |
@@ -191,6 +192,14 @@ Notes:
 - All custom thresholds are in the same unit as your sensor reports. For radon, the thresholds are always in **Bq/m³** — the card converts your sensor value before comparison.
 - Invalid thresholds (wrong length, non-numeric, etc.) silently fall back to the defaults. No errors thrown.
 - Colors are not customizable — only the boundaries between them.
+
+### Language
+
+The card auto-detects your Home Assistant frontend language and translates the status badge, recommendations, recommendation subtitles, radon advisory titles, and editor labels. Translations included so far: **English, Spanish, French, German** (Spanish/French/German contributed by [@b0rv3g4r4](https://github.com/b0rv3g4r4) on PR #11).
+
+If auto-detection picks the wrong language, force one explicitly with `language: es` (or `en` / `fr` / `de`).
+
+To contribute a new language: open a PR adding a block to the `TRANSLATIONS` const in `air-quality-card.js`. Copy the `en:` block, rename the key (e.g. `it:` for Italian), and translate the values — keep the structure identical. English is the fallback for any missing key.
 
 ### Outdoor Sensors
 
