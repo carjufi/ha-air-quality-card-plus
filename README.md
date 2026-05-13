@@ -100,6 +100,7 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 | `hours_to_show` | number | No | 24 | Hours of history to display (1-168) |
 | `temperature_unit` | string | No | "auto" | Temperature unit: "auto" (detect from HA), "F" (Fahrenheit), or "C" (Celsius) |
 | `radon_unit` | string | No | "auto" | Radon unit: "auto" (detect from sensor), "pCi/L" (US), or "Bq/m3" (International) |
+| `show_min_max` | boolean | No | `false` | Show the min/max value seen over the displayed time window beneath each metric |
 | `outdoor_co2_entity` | string | No | - | Outdoor CO2 sensor for comparison |
 | `outdoor_pm25_entity` | string | No | - | Outdoor PM2.5 sensor for comparison |
 | `outdoor_pm1_entity` | string | No | - | Outdoor PM1 sensor for comparison |

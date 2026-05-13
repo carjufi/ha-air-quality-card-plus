@@ -493,6 +493,51 @@ try {
 assert(configValid, 'radon_longterm_entity alone is valid config');
 
 // ============================================================
+// MIN/MAX HELPER TESTS (issue #23)
+// ============================================================
+
+section('Min/Max Helper');
+
+assert(card._getMinMax(null) === null, 'null data → null');
+assert(card._getMinMax([]) === null, 'empty array → null');
+
+const sample = [
+  { time: 1, value: 5 },
+  { time: 2, value: 10 },
+  { time: 3, value: 2 },
+  { time: 4, value: 8 }
+];
+const mm = card._getMinMax(sample);
+assert(mm && mm.min === 2, '_getMinMax min = 2');
+assert(mm && mm.max === 10, '_getMinMax max = 10');
+
+// Single-point edge case
+const single = card._getMinMax([{ time: 1, value: 7 }]);
+assert(single.min === 7 && single.max === 7, 'single point: min === max');
+
+// All same values
+const flat = card._getMinMax([{ time: 1, value: 4 }, { time: 2, value: 4 }, { time: 3, value: 4 }]);
+assert(flat.min === 4 && flat.max === 4, 'flat data: min === max');
+
+section('Graph value formatting');
+assert(card._formatGraphValue(5.4, 'ppm') === 5, 'ppm rounds');
+assert(card._formatGraphValue(5.4, 'ppb') === 5, 'ppb rounds');
+assert(card._formatGraphValue(5.4, 'Bq/m³') === 5, 'Bq/m³ rounds');
+assert(card._formatGraphValue(5.4, '°C') === 5, '°C rounds');
+assert(card._formatGraphValue(5.45, 'pCi/L') === '5.5', 'pCi/L 1 decimal (rounded)');
+assert(card._formatGraphValue(2.3, 'μg/m³') === '2.3', 'μg/m³ 1 decimal');
+
+// Default config has show_min_max: false (opt-in)
+const defaultCard = new CardClass();
+defaultCard.setConfig({ co2_entity: 'sensor.co2' });
+assert(defaultCard._config.show_min_max === false, 'show_min_max defaults to false');
+
+// User can opt in
+const minMaxCard = new CardClass();
+minMaxCard.setConfig({ co2_entity: 'sensor.co2', show_min_max: true });
+assert(minMaxCard._config.show_min_max === true, 'show_min_max can be enabled');
+
+// ============================================================
 // CARD SIZE TESTS
 // ============================================================
 
@@ -545,7 +590,7 @@ const allLabels = [
   'outdoor_co2_entity', 'outdoor_pm25_entity', 'outdoor_humidity_entity', 'outdoor_temperature_entity',
   'outdoor_co_entity', 'outdoor_hcho_entity', 'outdoor_tvoc_entity',
   'outdoor_pm1_entity', 'outdoor_pm10_entity', 'outdoor_pm03_entity',
-  'air_quality_entity', 'hours_to_show', 'temperature_unit', 'radon_unit'
+  'air_quality_entity', 'hours_to_show', 'temperature_unit', 'radon_unit', 'show_min_max'
 ];
 for (const name of allLabels) {
   const label = editor._computeLabel({ name });
