@@ -8,6 +8,36 @@
 
 const CARD_VERSION = '2.8.0';
 
+// Shared color palettes for the 5-tier color scale used across metrics.
+const SCALE_AIRQUALITY = ['#4caf50', '#8bc34a', '#ffc107', '#ff9800', '#f44336']; // green → red
+const SCALE_TEMPERATURE = ['#2196f3', '#03a9f4', '#4caf50', '#ff9800', '#f44336']; // blue → red
+const SCALE_HUMIDITY = ['#ff9800', '#8bc34a', '#4caf50', '#8bc34a', '#ff9800'];   // bell
+
+// Per-metric thresholds, color scale, and status labels. Users may override
+// the thresholds via config (e.g. `co2_thresholds: [500, 700, 900, 1200]`).
+// Defaults follow WHO 2021 Air Quality Guidelines and ASHRAE standards.
+//
+// Each `defaultThresholds` array has exactly 4 ascending values defining 5
+// tiers. The corresponding `colors`/`labels` arrays have exactly 5 entries.
+const METRIC_DEFS = {
+  co:         { defaultThresholds: [4, 9, 35, 100],          colors: SCALE_AIRQUALITY, labels: ['Safe', 'Low', 'Moderate', 'High', 'Dangerous'] },
+  co2:        { defaultThresholds: [600, 800, 1000, 1500],   colors: SCALE_AIRQUALITY, labels: ['Excellent', 'Good', 'Moderate', 'Elevated', 'Poor'] },
+  pm25:       { defaultThresholds: [5, 15, 25, 35],          colors: SCALE_AIRQUALITY, labels: ['Excellent', 'Good', 'Moderate', 'Elevated', 'Poor'] },
+  pm10:       { defaultThresholds: [15, 45, 75, 150],        colors: SCALE_AIRQUALITY, labels: ['Excellent', 'Good', 'Moderate', 'Elevated', 'Poor'] },
+  pm1:        { defaultThresholds: [5, 15, 25, 35],          colors: SCALE_AIRQUALITY, labels: ['Excellent', 'Good', 'Moderate', 'Elevated', 'Poor'] },
+  pm03:       { defaultThresholds: [500, 1000, 3000, 5000],  colors: SCALE_AIRQUALITY, labels: ['Clean', 'Good', 'Moderate', 'Elevated', 'Poor'] },
+  pm4:        { defaultThresholds: [10, 25, 37.5, 50],       colors: SCALE_AIRQUALITY, labels: ['Excellent', 'Good', 'Moderate', 'Elevated', 'Poor'] },
+  hcho:       { defaultThresholds: [20, 50, 100, 200],       colors: SCALE_AIRQUALITY, labels: ['Excellent', 'Good', 'Moderate', 'Elevated', 'Poor'] },
+  nox:        { defaultThresholds: [20, 50, 150, 250],       colors: SCALE_AIRQUALITY, labels: ['Excellent', 'Good', 'Moderate', 'Elevated', 'Poor'] },
+  radon:      { defaultThresholds: [48, 100, 148, 300],      colors: SCALE_AIRQUALITY, labels: ['Excellent', 'Good', 'Elevated', 'High', 'Dangerous'] },
+  humidity:   { defaultThresholds: [30, 40, 50, 60],         colors: SCALE_HUMIDITY,   labels: ['Too Dry', 'Dry', 'Comfortable', 'Humid', 'Too Humid'] },
+  // tVOC and temperature defaults depend on mode/unit and are computed at call time.
+  tvoc_ppb:   { defaultThresholds: [100, 300, 500, 1000],    colors: SCALE_AIRQUALITY, labels: ['Excellent', 'Good', 'Moderate', 'Elevated', 'Poor'] },
+  tvoc_index: { defaultThresholds: [100, 150, 250, 400],     colors: SCALE_AIRQUALITY, labels: ['Excellent', 'Good', 'Moderate', 'Elevated', 'Poor'] },
+  temp_c:     { defaultThresholds: [18, 20, 22, 24],         colors: SCALE_TEMPERATURE, labels: ['Cold', 'Cool', 'Comfortable', 'Warm', 'Hot'] },
+  temp_f:     { defaultThresholds: [65, 68, 72, 76],         colors: SCALE_TEMPERATURE, labels: ['Cold', 'Cool', 'Comfortable', 'Warm', 'Hot'] }
+};
+
 class AirQualityCard extends HTMLElement {
   static getConfigElement() {
     return document.createElement('air-quality-card-editor');
@@ -200,29 +230,53 @@ class AirQualityCard extends HTMLElement {
     return parseFloat(state) || 0;
   }
 
-  _getCO2Color(value) {
-    if (value < 600) return '#4caf50';
-    if (value < 800) return '#8bc34a';
-    if (value < 1000) return '#ffc107';
-    if (value < 1500) return '#ff9800';
-    return '#f44336';
+  // Generic ascending-tier lookup. `thresholds` is 4 ascending boundaries;
+  // `tiers` is the 5-element output array (colors, labels, …).
+  _tieredValue(value, thresholds, tiers) {
+    for (let i = 0; i < thresholds.length; i++) {
+      if (value < thresholds[i]) return tiers[i];
+    }
+    return tiers[tiers.length - 1];
   }
 
-  _getPM25Color(value) {
-    if (value < 5) return '#4caf50';
-    if (value < 15) return '#8bc34a';
-    if (value < 25) return '#ffc107';
-    if (value < 35) return '#ff9800';
-    return '#f44336';
+  // Resolve the active threshold array for a metric — config override first,
+  // then the metric's default. The metric key matches the key in METRIC_DEFS
+  // (e.g. 'co2' uses `co2_thresholds`; 'temp_c' uses `temperature_thresholds`).
+  _metricThresholds(metric) {
+    const overrideKey = {
+      co: 'co_thresholds', co2: 'co2_thresholds', pm25: 'pm25_thresholds',
+      pm10: 'pm10_thresholds', pm1: 'pm1_thresholds', pm03: 'pm03_thresholds',
+      pm4: 'pm4_thresholds', hcho: 'hcho_thresholds', nox: 'nox_thresholds',
+      radon: 'radon_thresholds', humidity: 'humidity_thresholds',
+      tvoc_ppb: 'tvoc_thresholds', tvoc_index: 'tvoc_thresholds',
+      temp_c: 'temperature_thresholds', temp_f: 'temperature_thresholds'
+    }[metric];
+    const override = overrideKey && this._config[overrideKey];
+    if (Array.isArray(override) && override.length === 4 && override.every(n => typeof n === 'number')) {
+      return override;
+    }
+    return METRIC_DEFS[metric].defaultThresholds;
   }
 
-  _getHCHOColor(value) {
-    if (value < 20) return '#4caf50';
-    if (value < 50) return '#8bc34a';
-    if (value < 100) return '#ffc107';
-    if (value < 200) return '#ff9800';
-    return '#f44336';
+  _getMetricColor(metric, value) {
+    return this._tieredValue(value, this._metricThresholds(metric), METRIC_DEFS[metric].colors);
   }
+
+  _getMetricStatus(metric, value) {
+    return this._tieredValue(value, this._metricThresholds(metric), METRIC_DEFS[metric].labels);
+  }
+
+  _getCO2Color(value)  { return this._getMetricColor('co2', value); }
+  _getPM25Color(value) { return this._getMetricColor('pm25', value); }
+  _getHCHOColor(value) { return this._getMetricColor('hcho', value); }
+  _getPM4Color(value)  { return this._getMetricColor('pm4', value); }
+  _getNOxColor(value)  { return this._getMetricColor('nox', value); }
+  _getHumidityColor(value) { return this._getMetricColor('humidity', value); }
+  _getPM1Color(value)  { return this._getMetricColor('pm1', value); }
+  _getPM10Color(value) { return this._getMetricColor('pm10', value); }
+  _getPM03Color(value) { return this._getMetricColor('pm03', value); }
+  _getCOColor(value)   { return this._getMetricColor('co', value); }
+  _getRadonColor(bq)   { return this._getMetricColor('radon', bq); }
 
   _isVOCIndex() {
     if (this._config.tvoc_unit && this._config.tvoc_unit !== 'auto') {
@@ -241,83 +295,12 @@ class AirQualityCard extends HTMLElement {
     return this._isVOCIndex() ? '' : 'ppb';
   }
 
+  _tvocMetric() {
+    return this._isVOCIndex() ? 'tvoc_index' : 'tvoc_ppb';
+  }
+
   _getTVOCColor(value) {
-    if (this._isVOCIndex()) {
-      if (value < 100) return '#4caf50';
-      if (value < 150) return '#8bc34a';
-      if (value < 250) return '#ffc107';
-      if (value < 400) return '#ff9800';
-      return '#f44336';
-    }
-    if (value < 100) return '#4caf50';
-    if (value < 300) return '#8bc34a';
-    if (value < 500) return '#ffc107';
-    if (value < 1000) return '#ff9800';
-    return '#f44336';
-  }
-
-  _getPM4Color(value) {
-    if (value < 10) return '#4caf50';
-    if (value < 25) return '#8bc34a';
-    if (value < 37.5) return '#ffc107';
-    if (value < 50) return '#ff9800';
-    return '#f44336';
-  }
-
-  _getNOxColor(value) {
-    if (value < 20) return '#4caf50';
-    if (value < 50) return '#8bc34a';
-    if (value < 150) return '#ffc107';
-    if (value < 250) return '#ff9800';
-    return '#f44336';
-  }
-
-  _getHumidityColor(value) {
-    if (value < 30) return '#ff9800';
-    if (value < 40) return '#8bc34a';
-    if (value < 50) return '#4caf50';
-    if (value < 60) return '#8bc34a';
-    return '#ff9800';
-  }
-
-  _getPM1Color(value) {
-    if (value < 5) return '#4caf50';
-    if (value < 15) return '#8bc34a';
-    if (value < 25) return '#ffc107';
-    if (value < 35) return '#ff9800';
-    return '#f44336';
-  }
-
-  _getPM10Color(value) {
-    if (value < 15) return '#4caf50';
-    if (value < 45) return '#8bc34a';
-    if (value < 75) return '#ffc107';
-    if (value < 150) return '#ff9800';
-    return '#f44336';
-  }
-
-  _getPM03Color(value) {
-    if (value < 500) return '#4caf50';
-    if (value < 1000) return '#8bc34a';
-    if (value < 3000) return '#ffc107';
-    if (value < 5000) return '#ff9800';
-    return '#f44336';
-  }
-
-  _getCOColor(value) {
-    if (value < 4) return '#4caf50';
-    if (value < 9) return '#8bc34a';
-    if (value < 35) return '#ffc107';
-    if (value < 100) return '#ff9800';
-    return '#f44336';
-  }
-
-  _getRadonColor(bq) {
-    if (bq < 48) return '#4caf50';
-    if (bq < 100) return '#8bc34a';
-    if (bq < 148) return '#ffc107';
-    if (bq < 300) return '#ff9800';
-    return '#f44336';
+    return this._getMetricColor(this._tvocMetric(), value);
   }
 
   _getRadonUnit() {
@@ -398,19 +381,12 @@ class AirQualityCard extends HTMLElement {
     return this._isCelsius() ? '°C' : '°F';
   }
 
+  _tempMetric() {
+    return this._isCelsius() ? 'temp_c' : 'temp_f';
+  }
+
   _getTempColor(value) {
-    if (this._isCelsius()) {
-      if (value < 18) return '#2196f3';
-      if (value < 20) return '#03a9f4';
-      if (value < 22) return '#4caf50';
-      if (value < 24) return '#ff9800';
-      return '#f44336';
-    }
-    if (value < 65) return '#2196f3';
-    if (value < 68) return '#03a9f4';
-    if (value < 72) return '#4caf50';
-    if (value < 76) return '#ff9800';
-    return '#f44336';
+    return this._getMetricColor(this._tempMetric(), value);
   }
 
   _getOverallStatus() {
@@ -1223,7 +1199,7 @@ class AirQualityCard extends HTMLElement {
       if (coValueEl) {
         coValueEl.innerHTML = `${co.toFixed(1)} <span class="unit">ppm</span><span class="status" id="co-status"></span>${outdoorSuffix('outdoor_co_entity', co, 'ppm')}`;
         const statusEl = coValueEl.querySelector('.status');
-        statusEl.textContent = co < 4 ? 'Safe' : co < 9 ? 'Low' : co < 35 ? 'Moderate' : co < 100 ? 'High' : 'Dangerous';
+        statusEl.textContent = this._getMetricStatus('co', co);
         statusEl.style.background = coColor + '22';
         statusEl.style.color = coColor;
         coValueEl.style.color = coColor;
@@ -1241,7 +1217,7 @@ class AirQualityCard extends HTMLElement {
         const displayVal = radonUnit === 'pCi/L' ? radonRaw.toFixed(1) : Math.round(radonRaw);
         radonValueEl.innerHTML = `${displayVal} <span class="unit">${radonUnit}</span><span class="status" id="radon-status"></span>`;
         const statusEl = radonValueEl.querySelector('.status');
-        statusEl.textContent = radonBq < 48 ? 'Excellent' : radonBq < 100 ? 'Good' : radonBq < 148 ? 'Elevated' : radonBq < 300 ? 'High' : 'Dangerous';
+        statusEl.textContent = this._getMetricStatus('radon', radonBq);
         statusEl.style.background = radonColor + '22';
         statusEl.style.color = radonColor;
         radonValueEl.style.color = radonColor;
@@ -1257,7 +1233,7 @@ class AirQualityCard extends HTMLElement {
       const ltValueEl = this.shadowRoot.getElementById('radon-lt-value');
       if (ltValueEl) {
         const displayVal = radonUnit === 'pCi/L' ? ltRaw.toFixed(1) : Math.round(ltRaw);
-        const statusText = ltBq < 48 ? 'Excellent' : ltBq < 100 ? 'Good' : ltBq < 148 ? 'Elevated' : ltBq < 300 ? 'High' : 'Dangerous';
+        const statusText = this._getMetricStatus('radon', ltBq);
         ltValueEl.innerHTML = `LT: ${displayVal} <span class="unit">${radonUnit}</span><span class="status">${statusText}</span>`;
         const statusEl = ltValueEl.querySelector('.status');
         statusEl.style.background = ltColor + '22';
@@ -1271,8 +1247,7 @@ class AirQualityCard extends HTMLElement {
           const displayVal = radonUnit === 'pCi/L' ? ltRaw.toFixed(1) : Math.round(ltRaw);
           radonValueEl.innerHTML = `${displayVal} <span class="unit">${radonUnit}</span><span class="status" id="radon-status"></span>`;
           const statusEl = radonValueEl.querySelector('.status');
-          const statusText = ltBq < 48 ? 'Excellent' : ltBq < 100 ? 'Good' : ltBq < 148 ? 'Elevated' : ltBq < 300 ? 'High' : 'Dangerous';
-          statusEl.textContent = statusText;
+          statusEl.textContent = this._getMetricStatus('radon', ltBq);
           statusEl.style.background = ltColor + '22';
           statusEl.style.color = ltColor;
           radonValueEl.style.color = ltColor;
@@ -1306,7 +1281,7 @@ class AirQualityCard extends HTMLElement {
       if (co2ValueEl) {
         co2ValueEl.innerHTML = `${Math.round(co2)} <span class="unit">ppm</span><span class="status" id="co2-status"></span>${outdoorSuffix('outdoor_co2_entity', co2, 'ppm')}`;
         const statusEl = co2ValueEl.querySelector('.status');
-        statusEl.textContent = co2 < 800 ? 'Excellent' : co2 < 1000 ? 'Good' : co2 < 1500 ? 'Elevated' : 'Poor';
+        statusEl.textContent = this._getMetricStatus('co2', co2);
         statusEl.style.background = co2Color + '22';
         statusEl.style.color = co2Color;
         co2ValueEl.style.color = co2Color;
@@ -1320,7 +1295,7 @@ class AirQualityCard extends HTMLElement {
       if (pm25ValueEl) {
         pm25ValueEl.innerHTML = `${pm25.toFixed(1)} <span class="unit">μg/m³</span><span class="status" id="pm25-status"></span>${outdoorSuffix('outdoor_pm25_entity', pm25, 'μg/m³')}`;
         const statusEl = pm25ValueEl.querySelector('.status');
-        statusEl.textContent = pm25 < 5 ? 'Excellent' : pm25 < 15 ? 'Good' : pm25 < 25 ? 'Moderate' : pm25 < 35 ? 'Elevated' : 'Poor';
+        statusEl.textContent = this._getMetricStatus('pm25', pm25);
         statusEl.style.background = pm25Color + '22';
         statusEl.style.color = pm25Color;
         pm25ValueEl.style.color = pm25Color;
@@ -1334,7 +1309,7 @@ class AirQualityCard extends HTMLElement {
       if (pm10ValueEl) {
         pm10ValueEl.innerHTML = `${pm10.toFixed(1)} <span class="unit">μg/m³</span><span class="status" id="pm10-status"></span>${outdoorSuffix('outdoor_pm10_entity', pm10, 'μg/m³')}`;
         const statusEl = pm10ValueEl.querySelector('.status');
-        statusEl.textContent = pm10 < 15 ? 'Excellent' : pm10 < 45 ? 'Good' : pm10 < 75 ? 'Moderate' : pm10 < 150 ? 'Elevated' : 'Poor';
+        statusEl.textContent = this._getMetricStatus('pm10', pm10);
         statusEl.style.background = pm10Color + '22';
         statusEl.style.color = pm10Color;
         pm10ValueEl.style.color = pm10Color;
@@ -1348,7 +1323,7 @@ class AirQualityCard extends HTMLElement {
       if (pm1ValueEl) {
         pm1ValueEl.innerHTML = `${pm1.toFixed(1)} <span class="unit">μg/m³</span><span class="status" id="pm1-status"></span>${outdoorSuffix('outdoor_pm1_entity', pm1, 'μg/m³')}`;
         const statusEl = pm1ValueEl.querySelector('.status');
-        statusEl.textContent = pm1 < 5 ? 'Excellent' : pm1 < 15 ? 'Good' : pm1 < 25 ? 'Moderate' : pm1 < 35 ? 'Elevated' : 'Poor';
+        statusEl.textContent = this._getMetricStatus('pm1', pm1);
         statusEl.style.background = pm1Color + '22';
         statusEl.style.color = pm1Color;
         pm1ValueEl.style.color = pm1Color;
@@ -1362,7 +1337,7 @@ class AirQualityCard extends HTMLElement {
       if (pm03ValueEl) {
         pm03ValueEl.innerHTML = `${Math.round(pm03)} <span class="unit">p/0.1L</span><span class="status" id="pm03-status"></span>${outdoorSuffix('outdoor_pm03_entity', pm03, 'p/0.1L')}`;
         const statusEl = pm03ValueEl.querySelector('.status');
-        statusEl.textContent = pm03 < 500 ? 'Clean' : pm03 < 1000 ? 'Good' : pm03 < 3000 ? 'Moderate' : pm03 < 5000 ? 'Elevated' : 'Poor';
+        statusEl.textContent = this._getMetricStatus('pm03', pm03);
         statusEl.style.background = pm03Color + '22';
         statusEl.style.color = pm03Color;
         pm03ValueEl.style.color = pm03Color;
@@ -1376,7 +1351,7 @@ class AirQualityCard extends HTMLElement {
       if (hchoValueEl) {
         hchoValueEl.innerHTML = `${hcho.toFixed(1)} <span class="unit">ppb</span><span class="status" id="hcho-status"></span>${outdoorSuffix('outdoor_hcho_entity', hcho, 'ppb')}`;
         const statusEl = hchoValueEl.querySelector('.status');
-        statusEl.textContent = hcho < 20 ? 'Excellent' : hcho < 50 ? 'Good' : hcho < 100 ? 'Moderate' : hcho < 200 ? 'Elevated' : 'Poor';
+        statusEl.textContent = this._getMetricStatus('hcho', hcho);
         statusEl.style.background = hchoColor + '22';
         statusEl.style.color = hchoColor;
         hchoValueEl.style.color = hchoColor;
@@ -1392,11 +1367,7 @@ class AirQualityCard extends HTMLElement {
         const unitSpan = tvocUnit ? ` <span class="unit">${tvocUnit}</span>` : '';
         tvocValueEl.innerHTML = `${tvoc.toFixed(1)}${unitSpan}<span class="status" id="tvoc-status"></span>${outdoorSuffix('outdoor_tvoc_entity', tvoc, tvocUnit)}`;
         const statusEl = tvocValueEl.querySelector('.status');
-        if (this._isVOCIndex()) {
-          statusEl.textContent = tvoc < 100 ? 'Excellent' : tvoc < 150 ? 'Good' : tvoc < 250 ? 'Moderate' : tvoc < 400 ? 'Elevated' : 'Poor';
-        } else {
-          statusEl.textContent = tvoc < 100 ? 'Excellent' : tvoc < 300 ? 'Good' : tvoc < 500 ? 'Moderate' : tvoc < 1000 ? 'Elevated' : 'Poor';
-        }
+        statusEl.textContent = this._getMetricStatus(this._tvocMetric(), tvoc);
         statusEl.style.background = tvocColor + '22';
         statusEl.style.color = tvocColor;
         tvocValueEl.style.color = tvocColor;
@@ -1410,7 +1381,7 @@ class AirQualityCard extends HTMLElement {
       if (pm4ValueEl) {
         pm4ValueEl.innerHTML = `${pm4.toFixed(1)} <span class="unit">μg/m³</span><span class="status" id="pm4-status"></span>`;
         const statusEl = pm4ValueEl.querySelector('.status');
-        statusEl.textContent = pm4 < 10 ? 'Excellent' : pm4 < 25 ? 'Good' : pm4 < 37.5 ? 'Moderate' : pm4 < 50 ? 'Elevated' : 'Poor';
+        statusEl.textContent = this._getMetricStatus('pm4', pm4);
         statusEl.style.background = pm4Color + '22';
         statusEl.style.color = pm4Color;
         pm4ValueEl.style.color = pm4Color;
@@ -1424,7 +1395,7 @@ class AirQualityCard extends HTMLElement {
       if (noxValueEl) {
         noxValueEl.innerHTML = `${nox.toFixed(1)} <span class="unit">ppb</span><span class="status" id="nox-status"></span>`;
         const statusEl = noxValueEl.querySelector('.status');
-        statusEl.textContent = nox < 20 ? 'Excellent' : nox < 50 ? 'Good' : nox < 150 ? 'Moderate' : nox < 250 ? 'Elevated' : 'Poor';
+        statusEl.textContent = this._getMetricStatus('nox', nox);
         statusEl.style.background = noxColor + '22';
         statusEl.style.color = noxColor;
         noxValueEl.style.color = noxColor;
@@ -1438,12 +1409,7 @@ class AirQualityCard extends HTMLElement {
       if (humidityValueEl) {
         humidityValueEl.innerHTML = `${Math.round(humidity)} <span class="unit">%</span><span class="status" id="humidity-status"></span>${outdoorSuffix('outdoor_humidity_entity', humidity, '%')}`;
         const statusEl = humidityValueEl.querySelector('.status');
-        let humidityStatus = 'Comfortable';
-        if (humidity < 30) humidityStatus = 'Too Dry';
-        else if (humidity < 40) humidityStatus = 'Dry';
-        else if (humidity > 60) humidityStatus = 'Too Humid';
-        else if (humidity > 50) humidityStatus = 'Humid';
-        statusEl.textContent = humidityStatus;
+        statusEl.textContent = this._getMetricStatus('humidity', humidity);
         statusEl.style.background = humidityColor + '22';
         statusEl.style.color = humidityColor;
         humidityValueEl.style.color = humidityColor;
@@ -1458,19 +1424,7 @@ class AirQualityCard extends HTMLElement {
       if (tempValueEl) {
         tempValueEl.innerHTML = `${Math.round(temp)} <span class="unit">${tempUnit}</span><span class="status" id="temperature-status"></span>${outdoorSuffix('outdoor_temperature_entity', temp, tempUnit)}`;
         const statusEl = tempValueEl.querySelector('.status');
-        let tempStatus = 'Comfortable';
-        if (this._isCelsius()) {
-          if (temp < 18) tempStatus = 'Cold';
-          else if (temp < 20) tempStatus = 'Cool';
-          else if (temp > 24) tempStatus = 'Hot';
-          else if (temp > 22) tempStatus = 'Warm';
-        } else {
-          if (temp < 65) tempStatus = 'Cold';
-          else if (temp < 68) tempStatus = 'Cool';
-          else if (temp > 76) tempStatus = 'Hot';
-          else if (temp > 72) tempStatus = 'Warm';
-        }
-        statusEl.textContent = tempStatus;
+        statusEl.textContent = this._getMetricStatus(this._tempMetric(), temp);
         statusEl.style.background = tempColor + '22';
         statusEl.style.color = tempColor;
         tempValueEl.style.color = tempColor;
