@@ -59,6 +59,7 @@ class AirQualityCard extends HTMLElement {
       temperature_unit: 'auto',
       radon_unit: 'auto',
       show_min_max: false,
+      display: 'full',
       ...config
     };
 
@@ -129,12 +130,17 @@ class AirQualityCard extends HTMLElement {
     minmaxEl.innerHTML = `<span class="arrow">↓</span>${minStr} · <span class="arrow">↑</span>${maxStr} ${unit}`;
   }
 
+  _isCompact() {
+    return this._config.display === 'compact';
+  }
+
   set hass(hass) {
     this._hass = hass;
     if (!this._rendered) {
       this._initialRender();
       this._rendered = true;
-      this._loadHistory();
+      // Compact mode doesn't draw graphs, so skip the history fetch
+      if (!this._isCompact()) this._loadHistory();
     }
     this._updateStates();
   }
@@ -162,6 +168,7 @@ class AirQualityCard extends HTMLElement {
   }
 
   getCardSize() {
+    if (this._isCompact()) return 1;
     let size = 3; // Base size for header and recommendation
     if (this._config.co_entity) size += 1;
     if (this._config.radon_entity) size += 1;
@@ -177,6 +184,20 @@ class AirQualityCard extends HTMLElement {
     if (this._config.humidity_entity) size += 1;
     if (this._config.temperature_entity) size += 1;
     return size;
+  }
+
+  // Dispatch HA's standard action event for tap/hold/double_tap. HA's action
+  // handler reads tap_action/hold_action/double_tap_action from the config.
+  // Pattern documented at developers.home-assistant.io/blog/2023/07/07.
+  _fireAction(action) {
+    const actionKey = `${action}_action`;
+    if (!this._config[actionKey]) return;
+    const event = new CustomEvent('hass-action', {
+      bubbles: true,
+      composed: true,
+      detail: { config: this._config, action }
+    });
+    this.dispatchEvent(event);
   }
 
   async _loadHistory() {
@@ -668,7 +689,93 @@ class AirQualityCard extends HTMLElement {
     return icons[rec] || 'mdi:air-filter';
   }
 
+  _renderCompact() {
+    const hasAction = !!this._config.tap_action;
+    this.shadowRoot.innerHTML = `
+      <style>
+        :host {
+          --aq-excellent: #4caf50;
+          --aq-good: #8bc34a;
+          --aq-moderate: #ffc107;
+          --aq-poor: #ff9800;
+          --aq-very-poor: #f44336;
+          --aq-critical: #d32f2f;
+        }
+        ha-card.compact {
+          padding: 12px 16px;
+          ${hasAction ? 'cursor: pointer; transition: background 0.15s ease;' : ''}
+        }
+        ${hasAction ? `
+        ha-card.compact:hover {
+          background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04);
+        }
+        ` : ''}
+        .compact-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+        }
+        .title {
+          font-size: 1.05em;
+          font-weight: 600;
+          color: var(--primary-text-color);
+        }
+        .status-badge {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 14px;
+          border-radius: 16px;
+          font-size: 0.85em;
+          font-weight: 500;
+          text-transform: capitalize;
+          color: var(--primary-text-color);
+        }
+        .status-badge ha-icon {
+          --mdc-icon-size: 18px;
+        }
+      </style>
+      <ha-card class="compact">
+        <div class="compact-row">
+          <span class="title">${this._config.name}</span>
+          <div class="status-badge" id="status-badge">
+            <ha-icon id="status-icon" icon="mdi:leaf"></ha-icon>
+            <span id="status-text">Loading…</span>
+          </div>
+        </div>
+      </ha-card>
+    `;
+    const card = this.shadowRoot.querySelector('ha-card');
+    if (card && hasAction) {
+      card.addEventListener('click', () => this._fireAction('tap'));
+    }
+    if (card && this._config.hold_action) {
+      // Distinguish a hold (>500ms) from a tap
+      let timer = null;
+      let held = false;
+      const start = () => {
+        held = false;
+        timer = setTimeout(() => { held = true; this._fireAction('hold'); }, 500);
+      };
+      const end = () => { if (timer) { clearTimeout(timer); timer = null; } };
+      card.addEventListener('mousedown', start);
+      card.addEventListener('mouseup', end);
+      card.addEventListener('mouseleave', end);
+      card.addEventListener('touchstart', start, { passive: true });
+      card.addEventListener('touchend', end);
+      // Suppress the tap action when a hold fired
+      card.addEventListener('click', (e) => {
+        if (held) { e.stopImmediatePropagation(); held = false; }
+      }, true);
+    }
+  }
+
   _initialRender() {
+    if (this._isCompact()) {
+      this._renderCompact();
+      return;
+    }
     const showCO = !!this._config.co_entity;
     const showRadon = !!(this._config.radon_entity || this._config.radon_longterm_entity);
     const showCO2 = !!this._config.co2_entity;
@@ -1309,6 +1416,9 @@ class AirQualityCard extends HTMLElement {
       statusText.textContent = overall.status;
       statusIcon.style.color = overall.color;
     }
+
+    // Compact mode only renders the status badge — skip the rest of the DOM updates
+    if (this._isCompact()) return;
 
     // Update recommendation
     const recIcon = this.shadowRoot.getElementById('rec-icon');
@@ -2045,7 +2155,11 @@ if (LitElement && !customElements.get('air-quality-card-editor')) {
         radon_unit: 'Radon Unit',
         tvoc_unit: 'tVOC Measurement Type',
         show_min_max: 'Show min/max for each metric',
-        order: 'Sensor Order (list of metric names)'
+        order: 'Sensor Order (list of metric names)',
+        display: 'Display Mode',
+        tap_action: 'Tap Action',
+        hold_action: 'Hold Action',
+        double_tap_action: 'Double-Tap Action'
       };
       return labels[schema.name] || schema.name;
     }
@@ -2160,6 +2274,10 @@ if (LitElement && !customElements.get('air-quality-card-editor')) {
             { name: 'hours_to_show', selector: { number: { min: 1, max: 168, mode: 'box', unit_of_measurement: 'hours' } } },
             { name: 'show_min_max', selector: { boolean: {} } },
             { name: 'order', selector: { object: {} } },
+            { name: 'display', selector: { select: { options: [{ value: 'full', label: 'Full (graphs and details)' }, { value: 'compact', label: 'Compact (status badge only)' }], mode: 'dropdown' } } },
+            { name: 'tap_action', selector: { ui_action: {} } },
+            { name: 'hold_action', selector: { ui_action: {} } },
+            { name: 'double_tap_action', selector: { ui_action: {} } },
             { name: 'temperature_unit', selector: { select: { options: [{ value: 'auto', label: 'Auto (from HA)' }, { value: 'F', label: 'Fahrenheit (°F)' }, { value: 'C', label: 'Celsius (°C)' }], mode: 'dropdown' } } },
             { name: 'radon_unit', selector: { select: { options: [{ value: 'auto', label: 'Auto (from sensor)' }, { value: 'pCi/L', label: 'pCi/L (US)' }, { value: 'Bq/m³', label: 'Bq/m³ (International)' }], mode: 'dropdown' } } },
             { name: 'tvoc_unit', selector: { select: { options: [{ value: 'auto', label: 'Auto-detect' }, { value: 'ppb', label: 'Absolute (ppb)' }, { value: 'index', label: 'VOC Index (Sensirion)' }], mode: 'dropdown' } } },

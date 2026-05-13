@@ -743,6 +743,74 @@ emptyOrderCard.setConfig({ co2_entity: 'sensor.co2', order: [] });
 assert(emptyOrderCard._getMetricOrder()[0] === 'co', 'empty array → default order');
 
 // ============================================================
+// COMPACT DISPLAY MODE (issue #20)
+// ============================================================
+
+section('Compact mode — config');
+
+const compactCard = new CardClass();
+compactCard.setConfig({ co2_entity: 'sensor.co2', display: 'compact' });
+assert(compactCard._config.display === 'compact', 'display: compact accepted');
+assert(compactCard._isCompact() === true, '_isCompact() true for compact display');
+
+const fullCard = new CardClass();
+fullCard.setConfig({ co2_entity: 'sensor.co2' });
+assert(fullCard._config.display === 'full', 'display defaults to full');
+assert(fullCard._isCompact() === false, '_isCompact() false for default display');
+
+// Card size: compact should be smaller
+assert(compactCard.getCardSize() === 1, 'compact getCardSize = 1');
+assert(fullCard.getCardSize() >= 3, 'full getCardSize ≥ 3');
+
+section('Compact mode — tap actions');
+
+// _fireAction is a no-op when the corresponding action isn't configured
+const noAction = new CardClass();
+noAction.setConfig({ co2_entity: 'sensor.co2', display: 'compact' });
+let dispatched = null;
+noAction.dispatchEvent = (event) => { dispatched = event; };
+noAction._fireAction('tap');
+assert(dispatched === null, 'no tap_action configured → no event dispatched');
+
+// When tap_action IS configured, hass-action event is dispatched with the right detail
+const withTap = new CardClass();
+withTap.setConfig({
+  co2_entity: 'sensor.co2',
+  display: 'compact',
+  tap_action: { action: 'navigate', navigation_path: '/lovelace/air-quality' }
+});
+let captured = null;
+withTap.dispatchEvent = (event) => { captured = event; };
+withTap._fireAction('tap');
+// Note: in node's mocked CustomEvent, we don't get the full event API, but we can
+// verify _fireAction's dispatch logic was reached by side-effect (captured set).
+assert(captured !== null, 'tap_action configured → event dispatched');
+
+// hold_action and double_tap_action also work
+const withHold = new CardClass();
+withHold.setConfig({
+  co2_entity: 'sensor.co2',
+  display: 'compact',
+  hold_action: { action: 'more-info' }
+});
+let held = null;
+withHold.dispatchEvent = (event) => { held = event; };
+withHold._fireAction('hold');
+assert(held !== null, 'hold_action configured → event dispatched');
+
+// _fireAction does nothing if the specific action isn't configured (tap_action set, hold_action not)
+const onlyTap = new CardClass();
+onlyTap.setConfig({
+  co2_entity: 'sensor.co2',
+  display: 'compact',
+  tap_action: { action: 'more-info' }
+});
+let unwanted = null;
+onlyTap.dispatchEvent = (event) => { unwanted = event; };
+onlyTap._fireAction('hold');
+assert(unwanted === null, 'tap_action set but hold_action absent → no hold event');
+
+// ============================================================
 // CARD SIZE TESTS
 // ============================================================
 

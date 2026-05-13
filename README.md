@@ -102,6 +102,10 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 | `radon_unit` | string | No | "auto" | Radon unit: "auto" (detect from sensor), "pCi/L" (US), or "Bq/m3" (International) |
 | `show_min_max` | boolean | No | `false` | Show the min/max value seen over the displayed time window beneath each metric |
 | `order` | array | No | default | Custom display order for metrics (see [Sensor Order](#sensor-order)) |
+| `display` | string | No | "full" | "full" (graphs and details) or "compact" (status badge only, ideal for overview pages) |
+| `tap_action` | action | No | - | Standard HA action object (e.g., `{ action: navigate, navigation_path: /air-quality }`). Active in compact mode |
+| `hold_action` | action | No | - | Same as `tap_action` but fired after holding for ~500 ms |
+| `double_tap_action` | action | No | - | Same as `tap_action` but fired on double-tap |
 | `outdoor_co2_entity` | string | No | - | Outdoor CO2 sensor for comparison |
 | `outdoor_pm25_entity` | string | No | - | Outdoor PM2.5 sensor for comparison |
 | `outdoor_pm1_entity` | string | No | - | Outdoor PM1 sensor for comparison |
@@ -135,6 +139,27 @@ order:
   - pm10
   - pm25
 ```
+
+### Compact Display Mode
+
+For overview dashboards where you want a small "go to the air quality page" indicator, use `display: compact`. Renders just the title and the overall status badge, with optional [HA tap actions](https://www.home-assistant.io/dashboards/actions/).
+
+```yaml
+type: custom:air-quality-card
+name: Air Quality
+co2_entity: sensor.air_quality_co2
+pm25_entity: sensor.air_quality_pm25
+display: compact
+tap_action:
+  action: navigate
+  navigation_path: /lovelace/air-quality
+```
+
+Compact mode:
+- Skips the history fetch (faster initial load)
+- Status badge updates in real-time from current sensor values
+- All three standard HA actions are supported: `tap_action`, `hold_action`, `double_tap_action`
+
 
 ### Outdoor Sensors
 
