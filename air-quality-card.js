@@ -89,6 +89,10 @@ class AirQualityCard extends HTMLElement {
 
     const endTime = new Date();
     const startTime = new Date(endTime.getTime() - (this._config.hours_to_show * 60 * 60 * 1000));
+    // Persist the requested time window so _renderGraph can plot points by
+    // timestamp (not by data-point index) and so axis labels reflect the
+    // configured window even when data doesn't span it.
+    this._timeWindow = { start: startTime.getTime(), end: endTime.getTime() };
 
     try {
       const promises = [];
@@ -206,6 +210,49 @@ class AirQualityCard extends HTMLElement {
     if (value < 1000) return '#ffc107';
     if (value < 1500) return '#ff9800';
     return '#f44336';
+  }
+
+  _getCO2Status(value) {
+    if (value < 600) return 'Excellent';
+    if (value < 800) return 'Good';
+    if (value < 1000) return 'Moderate';
+    if (value < 1500) return 'Elevated';
+    return 'Poor';
+  }
+
+  _getHumidityStatus(value) {
+    if (value < 30) return 'Too Dry';
+    if (value < 40) return 'Dry';
+    if (value < 50) return 'Comfortable';
+    if (value < 60) return 'Humid';
+    return 'Too Humid';
+  }
+
+  _getTempStatus(value) {
+    if (this._isCelsius()) {
+      if (value < 18) return 'Cold';
+      if (value < 20) return 'Cool';
+      if (value < 22) return 'Comfortable';
+      if (value < 24) return 'Warm';
+      return 'Hot';
+    }
+    if (value < 65) return 'Cold';
+    if (value < 68) return 'Cool';
+    if (value < 72) return 'Comfortable';
+    if (value < 76) return 'Warm';
+    return 'Hot';
+  }
+
+  // Plot points by timestamp within the configured time window so spikes
+  // appear at the correct X position even when data is unevenly sampled.
+  _computeGraphX(timestamp, width, padding) {
+    if (!this._timeWindow) return padding;
+    const { start, end } = this._timeWindow;
+    const span = end - start;
+    if (span <= 0) return padding;
+    const ratio = (timestamp - start) / span;
+    const clamped = Math.max(0, Math.min(1, ratio));
+    return padding + clamped * (width - 2 * padding);
   }
 
   _getPM25Color(value) {
@@ -1306,7 +1353,7 @@ class AirQualityCard extends HTMLElement {
       if (co2ValueEl) {
         co2ValueEl.innerHTML = `${Math.round(co2)} <span class="unit">ppm</span><span class="status" id="co2-status"></span>${outdoorSuffix('outdoor_co2_entity', co2, 'ppm')}`;
         const statusEl = co2ValueEl.querySelector('.status');
-        statusEl.textContent = co2 < 800 ? 'Excellent' : co2 < 1000 ? 'Good' : co2 < 1500 ? 'Elevated' : 'Poor';
+        statusEl.textContent = this._getCO2Status(co2);
         statusEl.style.background = co2Color + '22';
         statusEl.style.color = co2Color;
         co2ValueEl.style.color = co2Color;
@@ -1438,12 +1485,7 @@ class AirQualityCard extends HTMLElement {
       if (humidityValueEl) {
         humidityValueEl.innerHTML = `${Math.round(humidity)} <span class="unit">%</span><span class="status" id="humidity-status"></span>${outdoorSuffix('outdoor_humidity_entity', humidity, '%')}`;
         const statusEl = humidityValueEl.querySelector('.status');
-        let humidityStatus = 'Comfortable';
-        if (humidity < 30) humidityStatus = 'Too Dry';
-        else if (humidity < 40) humidityStatus = 'Dry';
-        else if (humidity > 60) humidityStatus = 'Too Humid';
-        else if (humidity > 50) humidityStatus = 'Humid';
-        statusEl.textContent = humidityStatus;
+        statusEl.textContent = this._getHumidityStatus(humidity);
         statusEl.style.background = humidityColor + '22';
         statusEl.style.color = humidityColor;
         humidityValueEl.style.color = humidityColor;
@@ -1458,19 +1500,7 @@ class AirQualityCard extends HTMLElement {
       if (tempValueEl) {
         tempValueEl.innerHTML = `${Math.round(temp)} <span class="unit">${tempUnit}</span><span class="status" id="temperature-status"></span>${outdoorSuffix('outdoor_temperature_entity', temp, tempUnit)}`;
         const statusEl = tempValueEl.querySelector('.status');
-        let tempStatus = 'Comfortable';
-        if (this._isCelsius()) {
-          if (temp < 18) tempStatus = 'Cold';
-          else if (temp < 20) tempStatus = 'Cool';
-          else if (temp > 24) tempStatus = 'Hot';
-          else if (temp > 22) tempStatus = 'Warm';
-        } else {
-          if (temp < 65) tempStatus = 'Cold';
-          else if (temp < 68) tempStatus = 'Cool';
-          else if (temp > 76) tempStatus = 'Hot';
-          else if (temp > 72) tempStatus = 'Warm';
-        }
-        statusEl.textContent = tempStatus;
+        statusEl.textContent = this._getTempStatus(temp);
         statusEl.style.background = tempColor + '22';
         statusEl.style.color = tempColor;
         tempValueEl.style.color = tempColor;
@@ -1551,17 +1581,17 @@ class AirQualityCard extends HTMLElement {
     const dataMax = Math.max(...allValues, maxVal);
     const range = dataMax - dataMin || 1;
 
-    const points = data.map((d, i) => {
-      const x = padding + (i / (data.length - 1)) * (width - 2 * padding);
+    const points = data.map(d => {
+      const x = this._computeGraphX(d.time, width, padding);
       const y = height - padding - ((d.value - dataMin) / range) * (height - 2 * padding);
       return { x, y, value: d.value, time: d.time, color: colorFn(d.value) };
     });
 
-    // Map outdoor data to points using same coordinate system
+    // Map outdoor data to points using the same coordinate system
     let outdoorPoints = [];
     if (outdoorData && outdoorData.length >= 2) {
-      outdoorPoints = outdoorData.map((d, i) => {
-        const x = padding + (i / (outdoorData.length - 1)) * (width - 2 * padding);
+      outdoorPoints = outdoorData.map(d => {
+        const x = this._computeGraphX(d.time, width, padding);
         const y = height - padding - ((d.value - dataMin) / range) * (height - 2 * padding);
         return { x, y, value: d.value, time: d.time, color: colorFn(d.value) };
       });
@@ -1573,10 +1603,12 @@ class AirQualityCard extends HTMLElement {
 
     const ts = Date.now();
     const gradientId = `gradient-${graphId}-${ts}`;
+    // Gradient stops follow each point's actual X position so colors line up
+    // with the (now time-based) line geometry instead of being evenly spaced.
+    const stopPct = (px) => (((px - padding) / (width - 2 * padding)) * 100);
     let gradientStops = '';
     for (let i = 0; i < points.length; i++) {
-      const pct = (i / (points.length - 1)) * 100;
-      gradientStops += `<stop offset="${pct}%" style="stop-color:${points[i].color}" />`;
+      gradientStops += `<stop offset="${stopPct(points[i].x).toFixed(2)}%" style="stop-color:${points[i].color}" />`;
     }
 
     let linePath = `M ${points[0].x} ${points[0].y}`;
@@ -1593,8 +1625,7 @@ class AirQualityCard extends HTMLElement {
       const outdoorGradientId = `outdoor-gradient-${graphId}-${ts}`;
       let outdoorGradientStops = '';
       for (let i = 0; i < outdoorPoints.length; i++) {
-        const pct = (i / (outdoorPoints.length - 1)) * 100;
-        outdoorGradientStops += `<stop offset="${pct}%" style="stop-color:${outdoorPoints[i].color}" />`;
+        outdoorGradientStops += `<stop offset="${stopPct(outdoorPoints[i].x).toFixed(2)}%" style="stop-color:${outdoorPoints[i].color}" />`;
       }
       let outdoorLinePath = `M ${outdoorPoints[0].x} ${outdoorPoints[0].y}`;
       for (let i = 1; i < outdoorPoints.length; i++) {
@@ -1647,9 +1678,12 @@ class AirQualityCard extends HTMLElement {
     }
 
     if (timeAxis && points.length > 0) {
-      const startTime = new Date(points[0].time);
-      const endTime = new Date(points[points.length - 1].time);
-      const midTime = new Date((startTime.getTime() + endTime.getTime()) / 2);
+      // Use the configured time window so labels match the X scale even when
+      // data doesn't span the full window (e.g. sensor unavailable for hours).
+      const win = this._timeWindow || { start: points[0].time, end: points[points.length - 1].time };
+      const startTime = new Date(win.start);
+      const endTime = new Date(win.end);
+      const midTime = new Date((win.start + win.end) / 2);
 
       const formatTime = (d) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
       timeAxis.innerHTML = `

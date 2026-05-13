@@ -493,6 +493,92 @@ try {
 assert(configValid, 'radon_longterm_entity alone is valid config');
 
 // ============================================================
+// STATUS LABEL TESTS (must match color thresholds)
+// ============================================================
+
+section('CO2 Status Label');
+assert(card._getCO2Status(400) === 'Excellent', 'CO2 400 = Excellent');
+assert(card._getCO2Status(599) === 'Excellent', 'CO2 599 = Excellent');
+assert(card._getCO2Status(600) === 'Good', 'CO2 600 = Good (boundary)');
+assert(card._getCO2Status(700) === 'Good', 'CO2 700 = Good');
+assert(card._getCO2Status(800) === 'Moderate', 'CO2 800 = Moderate (boundary, was missing tier)');
+assert(card._getCO2Status(900) === 'Moderate', 'CO2 900 = Moderate (was incorrectly "Good")');
+assert(card._getCO2Status(1000) === 'Elevated', 'CO2 1000 = Elevated (boundary)');
+assert(card._getCO2Status(1200) === 'Elevated', 'CO2 1200 = Elevated');
+assert(card._getCO2Status(1500) === 'Poor', 'CO2 1500 = Poor (boundary)');
+assert(card._getCO2Status(2000) === 'Poor', 'CO2 2000 = Poor');
+
+section('Humidity Status Label');
+assert(card._getHumidityStatus(20) === 'Too Dry', 'Humidity 20 = Too Dry');
+assert(card._getHumidityStatus(30) === 'Dry', 'Humidity 30 = Dry (boundary)');
+assert(card._getHumidityStatus(35) === 'Dry', 'Humidity 35 = Dry');
+assert(card._getHumidityStatus(40) === 'Comfortable', 'Humidity 40 = Comfortable (boundary)');
+assert(card._getHumidityStatus(45) === 'Comfortable', 'Humidity 45 = Comfortable');
+assert(card._getHumidityStatus(50) === 'Humid', 'Humidity 50 = Humid (boundary fix)');
+assert(card._getHumidityStatus(55) === 'Humid', 'Humidity 55 = Humid');
+assert(card._getHumidityStatus(60) === 'Too Humid', 'Humidity 60 = Too Humid (boundary fix)');
+assert(card._getHumidityStatus(70) === 'Too Humid', 'Humidity 70 = Too Humid');
+
+section('Temperature Status Label (Celsius)');
+card._config.temperature_unit = 'C';
+assert(card._getTempStatus(15) === 'Cold', 'Temp 15C = Cold');
+assert(card._getTempStatus(18) === 'Cool', 'Temp 18C = Cool (boundary)');
+assert(card._getTempStatus(19) === 'Cool', 'Temp 19C = Cool');
+assert(card._getTempStatus(20) === 'Comfortable', 'Temp 20C = Comfortable (boundary)');
+assert(card._getTempStatus(21) === 'Comfortable', 'Temp 21C = Comfortable');
+assert(card._getTempStatus(22) === 'Warm', 'Temp 22C = Warm (boundary fix)');
+assert(card._getTempStatus(23) === 'Warm', 'Temp 23C = Warm');
+assert(card._getTempStatus(24) === 'Hot', 'Temp 24C = Hot (boundary fix)');
+assert(card._getTempStatus(28) === 'Hot', 'Temp 28C = Hot');
+
+section('Temperature Status Label (Fahrenheit)');
+card._config.temperature_unit = 'F';
+assert(card._getTempStatus(60) === 'Cold', 'Temp 60F = Cold');
+assert(card._getTempStatus(65) === 'Cool', 'Temp 65F = Cool (boundary)');
+assert(card._getTempStatus(68) === 'Comfortable', 'Temp 68F = Comfortable (boundary)');
+assert(card._getTempStatus(70) === 'Comfortable', 'Temp 70F = Comfortable');
+assert(card._getTempStatus(72) === 'Warm', 'Temp 72F = Warm (boundary fix)');
+assert(card._getTempStatus(74) === 'Warm', 'Temp 74F = Warm');
+assert(card._getTempStatus(76) === 'Hot', 'Temp 76F = Hot (boundary fix)');
+assert(card._getTempStatus(80) === 'Hot', 'Temp 80F = Hot');
+card._config.temperature_unit = 'auto';
+
+// ============================================================
+// TIME-BASED GRAPH X COORDINATE TESTS (issue #22)
+// ============================================================
+
+section('Graph X by timestamp');
+
+// Setup a 24-hour window: start = 0, end = 86400000
+card._timeWindow = { start: 0, end: 86400000 };
+const W = 300, P = 2;
+
+assert(card._computeGraphX(0, W, P) === P, 'point at window start → x = padding');
+assert(card._computeGraphX(86400000, W, P) === W - P, 'point at window end → x = width - padding');
+assert(Math.abs(card._computeGraphX(43200000, W, P) - (W / 2)) < 0.001, 'point at midpoint → x ≈ width/2');
+
+// Points outside the window get clamped (defensive: API can occasionally return slightly out-of-range data)
+assert(card._computeGraphX(-1000, W, P) === P, 'point before start → clamped to padding');
+assert(card._computeGraphX(86400000 + 1000, W, P) === W - P, 'point after end → clamped to width-padding');
+
+// Unevenly sampled data: a spike at hour 4 of a 24h window must render at ~16.6% of width
+// (the bug that #22 reported: previously it would render based on data index, not timestamp)
+const fourHoursIn = 4 * 60 * 60 * 1000;
+const expectedX = P + (fourHoursIn / 86400000) * (W - 2 * P);
+assert(Math.abs(card._computeGraphX(fourHoursIn, W, P) - expectedX) < 0.001,
+  '4h-in spike renders at correct fractional X regardless of total data-point count');
+
+// Defensive: zero-span window doesn't NaN
+card._timeWindow = { start: 5000, end: 5000 };
+assert(card._computeGraphX(5000, W, P) === P, 'zero-span window does not produce NaN');
+
+// Defensive: missing time window doesn't crash
+card._timeWindow = null;
+assert(card._computeGraphX(12345, W, P) === P, 'missing time window returns padding instead of NaN');
+
+card._timeWindow = undefined;
+
+// ============================================================
 // CARD SIZE TESTS
 // ============================================================
 
