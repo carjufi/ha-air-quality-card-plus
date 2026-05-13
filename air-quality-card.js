@@ -1,12 +1,12 @@
 /**
- * Air Quality Card v2.6.1
+ * Air Quality Card v2.9.0-rc2
  * A custom Home Assistant card for air quality visualization
  * Thresholds based on WHO 2021 guidelines and ASHRAE standards
  *
  * https://github.com/KadenThomp36/air-quality-card
  */
 
-const CARD_VERSION = '2.8.0';
+const CARD_VERSION = '2.9.0-rc2';
 
 // Shared color palettes for the 5-tier color scale used across metrics.
 const SCALE_AIRQUALITY = ['#4caf50', '#8bc34a', '#ffc107', '#ff9800', '#f44336']; // green → red
