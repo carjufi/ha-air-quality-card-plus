@@ -58,6 +58,7 @@ class AirQualityCard extends HTMLElement {
       hours_to_show: 24,
       temperature_unit: 'auto',
       radon_unit: 'auto',
+      show_min_max: false,
       ...config
     };
 
@@ -88,6 +89,44 @@ class AirQualityCard extends HTMLElement {
 
     this._rendered = false;
     this._historyLoaded = false;
+  }
+
+  _getMinMax(data) {
+    if (!data || !data.length) return null;
+    let min = data[0].value;
+    let max = data[0].value;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i].value < min) min = data[i].value;
+      if (data[i].value > max) max = data[i].value;
+    }
+    return { min, max };
+  }
+
+  _formatGraphValue(value, unit) {
+    if (unit === 'pCi/L') return value.toFixed(1);
+    if (unit === 'ppm' || unit === 'ppb' || unit === 'p/0.1L' || unit === 'Bq/m³' || unit === '%' || unit === '°F' || unit === '°C') {
+      return Math.round(value);
+    }
+    return value.toFixed(1);
+  }
+
+  _updateMinMaxDisplay(graphId, data, unit) {
+    const minMax = this._getMinMax(data);
+    if (!minMax) return;
+    const container = this.shadowRoot.getElementById(`${graphId}-graph-container`);
+    if (!container) return;
+    let minmaxEl = this.shadowRoot.getElementById(`${graphId}-minmax`);
+    if (!minmaxEl) {
+      const header = container.querySelector('.graph-header');
+      if (!header) return;
+      minmaxEl = document.createElement('div');
+      minmaxEl.className = 'graph-minmax';
+      minmaxEl.id = `${graphId}-minmax`;
+      header.insertAdjacentElement('afterend', minmaxEl);
+    }
+    const minStr = this._formatGraphValue(minMax.min, unit);
+    const maxStr = this._formatGraphValue(minMax.max, unit);
+    minmaxEl.innerHTML = `<span class="arrow">↓</span>${minStr} · <span class="arrow">↑</span>${maxStr} ${unit}`;
   }
 
   set hass(hass) {
@@ -793,6 +832,21 @@ class AirQualityCard extends HTMLElement {
           margin-left: 4px;
           padding: 1px 4px;
           border-radius: 3px;
+        }
+
+        .graph-minmax {
+          font-size: 0.7em;
+          color: var(--secondary-text-color);
+          opacity: 0.7;
+          text-align: right;
+          margin-top: -4px;
+          margin-bottom: 4px;
+          letter-spacing: 0.3px;
+        }
+
+        .graph-minmax .arrow {
+          font-weight: 600;
+          margin: 0 1px;
         }
 
         .graph-wrapper {
@@ -1608,6 +1662,10 @@ class AirQualityCard extends HTMLElement {
     const timeAxis = this.shadowRoot.getElementById(`${graphId}-time-axis`);
     if (!svg || !data.length) return;
 
+    if (this._config.show_min_max) {
+      this._updateMinMaxDisplay(graphId, data, unit);
+    }
+
     const width = 300;
     const height = 50;
     const padding = 2;
@@ -1961,7 +2019,8 @@ if (LitElement && !customElements.get('air-quality-card-editor')) {
         hours_to_show: 'Graph History',
         temperature_unit: 'Temperature Unit',
         radon_unit: 'Radon Unit',
-        tvoc_unit: 'tVOC Measurement Type'
+        tvoc_unit: 'tVOC Measurement Type',
+        show_min_max: 'Show min/max for each metric'
       };
       return labels[schema.name] || schema.name;
     }
@@ -2074,6 +2133,7 @@ if (LitElement && !customElements.get('air-quality-card-editor')) {
           schema: [
             { name: 'air_quality_entity', selector: { entity: { domain: 'sensor' } } },
             { name: 'hours_to_show', selector: { number: { min: 1, max: 168, mode: 'box', unit_of_measurement: 'hours' } } },
+            { name: 'show_min_max', selector: { boolean: {} } },
             { name: 'temperature_unit', selector: { select: { options: [{ value: 'auto', label: 'Auto (from HA)' }, { value: 'F', label: 'Fahrenheit (°F)' }, { value: 'C', label: 'Celsius (°C)' }], mode: 'dropdown' } } },
             { name: 'radon_unit', selector: { select: { options: [{ value: 'auto', label: 'Auto (from sensor)' }, { value: 'pCi/L', label: 'pCi/L (US)' }, { value: 'Bq/m³', label: 'Bq/m³ (International)' }], mode: 'dropdown' } } },
             { name: 'tvoc_unit', selector: { select: { options: [{ value: 'auto', label: 'Auto-detect' }, { value: 'ppb', label: 'Absolute (ppb)' }, { value: 'index', label: 'VOC Index (Sensirion)' }], mode: 'dropdown' } } },
