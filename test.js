@@ -156,6 +156,20 @@ assert(card._getHumidityColor(45) === '#4caf50', 'Humidity 45 = green (ideal)');
 assert(card._getHumidityColor(55) === '#8bc34a', 'Humidity 55 = light green');
 assert(card._getHumidityColor(70) === '#ff9800', 'Humidity 70 = orange (too humid)');
 
+section('Pressure Color + Status (bell, #38)');
+assert(card._getPressureColor(975) === '#ff9800', 'Pressure 975 = orange (low)');
+assert(card._getPressureColor(1000) === '#8bc34a', 'Pressure 1000 = light green (slightly low)');
+assert(card._getPressureColor(1013) === '#4caf50', 'Pressure 1013 = green (normal)');
+assert(card._getPressureColor(1030) === '#8bc34a', 'Pressure 1030 = light green (slightly high)');
+assert(card._getPressureColor(1050) === '#ff9800', 'Pressure 1050 = orange (high)');
+assert(card._getMetricStatus('pressure', 1013) === 'Normal', 'Pressure 1013 status = Normal');
+assert(card._getMetricStatus('pressure', 975) === 'Low', 'Pressure 975 status = Low');
+assert(card._getMetricStatus('pressure', 1050) === 'High', 'Pressure 1050 status = High');
+// Custom thresholds work for pressure too (e.g. inHg or a tighter band)
+const presCustom = new CardClass();
+presCustom.setConfig({ pressure_entity: 'sensor.p', pressure_thresholds: [1000, 1010, 1020, 1030] });
+assert(presCustom._getPressureColor(1015) === '#4caf50', 'custom pressure 1015 = green (normal band)');
+
 section('Temperature Color (Fahrenheit)');
 card._config.temperature_unit = 'F';
 assert(card._getTempColor(60) === '#2196f3', 'Temp 60F = blue');
@@ -767,8 +781,8 @@ const defaultOrderCard = new CardClass();
 defaultOrderCard.setConfig({ co2_entity: 'sensor.co2' });
 const defaultOrder = defaultOrderCard._getMetricOrder();
 assert(defaultOrder[0] === 'co', 'default order: co first');
-assert(defaultOrder[defaultOrder.length - 1] === 'temperature', 'default order: temperature last');
-assert(defaultOrder.length === 13, 'default order: all 13 metrics');
+assert(defaultOrder[defaultOrder.length - 1] === 'pressure', 'default order: pressure last');
+assert(defaultOrder.length === 14, 'default order: all 14 metrics');
 
 section('Metric order — user override');
 
@@ -785,7 +799,7 @@ assert(reordered[3] === 'pm10', 'user order: pm10 fourth');
 assert(reordered[4] === 'pm25', 'user order: pm25 fifth');
 // Unmentioned metrics get appended in default order — user never loses a sensor
 assert(reordered.includes('radon'), 'unmentioned metrics still present');
-assert(reordered.length === 13, 'user order: total still 13');
+assert(reordered.length === 14, 'user order: total still 14');
 
 section('Metric order — invalid input');
 
@@ -1075,6 +1089,9 @@ card._config.hcho_entity = 'sensor.hcho';
 card._config.tvoc_entity = 'sensor.tvoc';
 assert(card.getCardSize() === 14, 'All 11 sensors = 14');
 
+card._config.pressure_entity = 'sensor.pressure';
+assert(card.getCardSize() === 15, 'pressure adds one more = 15');
+
 // ============================================================
 // GETCONFIG FORM TESTS
 // ============================================================
@@ -1102,6 +1119,7 @@ const allLabels = [
   'outdoor_co2_entity', 'outdoor_pm25_entity', 'outdoor_humidity_entity', 'outdoor_temperature_entity',
   'outdoor_co_entity', 'outdoor_hcho_entity', 'outdoor_tvoc_entity',
   'outdoor_pm1_entity', 'outdoor_pm10_entity', 'outdoor_pm03_entity',
+  'pressure_entity', 'outdoor_pressure_entity',
   'air_quality_entity', 'hours_to_show', 'temperature_unit', 'radon_unit', 'show_min_max'
 ];
 for (const name of allLabels) {
@@ -1138,10 +1156,10 @@ section('History Keys');
 const freshCard = new CardClass();
 const expectedKeys = [
   'co2', 'pm25', 'pm1', 'pm10', 'pm03', 'hcho', 'tvoc', 'co', 'radon', 'radon_longterm',
-  'humidity', 'temperature',
+  'humidity', 'temperature', 'pressure',
   'outdoor_co2', 'outdoor_pm25', 'outdoor_pm1', 'outdoor_pm10', 'outdoor_pm03',
   'outdoor_hcho', 'outdoor_tvoc', 'outdoor_co',
-  'outdoor_humidity', 'outdoor_temperature'
+  'outdoor_humidity', 'outdoor_temperature', 'outdoor_pressure'
 ];
 for (const key of expectedKeys) {
   assert(Array.isArray(freshCard._history[key]), `History key '${key}' exists and is array`);

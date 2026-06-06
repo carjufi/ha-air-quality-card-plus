@@ -21,7 +21,7 @@ A custom Home Assistant Lovelace card for monitoring indoor air quality with bea
 
 ## Features
 
-- **Real-time monitoring** of CO, Radon, CO2, PM2.5, PM10, PM1, PM0.3, HCHO, tVOC, humidity, and temperature
+- **Real-time monitoring** of CO, Radon, CO2, PM2.5, PM10, PM1, PM0.3, HCHO, tVOC, humidity, temperature, and atmospheric pressure
 - **CO safety alerts** -- critical red warnings for dangerous carbon monoxide levels
 - **Radon advisory banner** -- separate long-term health advisory with EPA/WHO thresholds (supports pCi/L and Bq/m3)
 - **Gradient-colored graphs** that change color based on air quality levels
@@ -96,6 +96,7 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 | `tvoc_entity` | string | No* | - | Volatile organic compounds (tVOC) sensor entity ID |
 | `humidity_entity` | string | No* | - | Humidity sensor entity ID |
 | `temperature_entity` | string | No* | - | Temperature sensor entity ID |
+| `pressure_entity` | string | No* | - | Atmospheric pressure sensor entity ID (e.g. Airthings) |
 | `air_quality_entity` | string | No | - | Overall air quality index entity ([passthrough — see below](#air-quality-index-entity)) |
 | `hours_to_show` | number | No | 24 | Hours of history to display (1-168) |
 | `temperature_unit` | string | No | "auto" | Temperature unit: "auto" (detect from HA), "F" (Fahrenheit), or "C" (Celsius) |
@@ -118,6 +119,8 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 | `nox_thresholds` | array | No | `[20, 50, 150, 250]` | Custom NOx thresholds (ppb) |
 | `radon_thresholds` | array | No | `[48, 100, 148, 300]` | Custom radon thresholds (Bq/m³ — even if you display in pCi/L) |
 | `humidity_thresholds` | array | No | `[30, 40, 50, 60]` | Custom humidity thresholds (%) |
+| `pressure_thresholds` | array | No | `[990, 1005, 1025, 1040]` | Custom atmospheric pressure thresholds (hPa by default; override for inHg/mmHg) |
+| `outdoor_pressure_entity` | string | No | - | Outdoor atmospheric pressure sensor for comparison |
 | `temperature_thresholds` | array | No | unit-dependent | Custom temperature thresholds (in the unit your sensor reports) |
 | `language` | string | No | "auto" | UI language. "auto" (use Home Assistant's), "en", "es", "fr", or "de" |
 | `outdoor_co2_entity` | string | No | - | Outdoor CO2 sensor for comparison |
@@ -335,9 +338,19 @@ Based on WHO 2021 Air Quality Guidelines:
 | Humid | 50-60% | Light Green | Acceptable |
 | Too Humid | > 60% | Orange | Improve ventilation |
 
+### Atmospheric Pressure
+Informational, not a health hazard — a wide green band keeps typical weather calm. Thresholds assume **hPa / mbar** (what Airthings and most HA sensors report); override `pressure_thresholds` for other units.
+| Level | Range (hPa) | Color | Meaning |
+|-------|-------------|-------|---------|
+| Low | < 990 | Orange | Stormy / rapidly falling |
+| Slightly Low | 990-1005 | Light Green | Below average |
+| Normal | 1005-1025 | Green | Typical sea-level range |
+| Slightly High | 1025-1040 | Light Green | Above average |
+| High | > 1040 | Orange | Unusually high |
+
 ## Supported Devices
 
-This card works with any sensor that provides entities for CO, Radon, CO2, PM2.5, PM10, PM1, PM0.3, HCHO, tVOC, humidity, or temperature. Use any combination -- even a single sensor works. Tested with:
+This card works with any sensor that provides entities for CO, Radon, CO2, PM2.5, PM10, PM1, PM0.3, HCHO, tVOC, humidity, temperature, or atmospheric pressure. Use any combination -- even a single sensor works. Tested with:
 
 - IKEA VINDSTYRKA / ALPSTUGA (via Matter)
 - Aqara TVOC Air Quality Monitor
