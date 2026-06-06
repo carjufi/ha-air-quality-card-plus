@@ -21,7 +21,7 @@ A custom Home Assistant Lovelace card for monitoring indoor air quality with bea
 
 ## Features
 
-- **Real-time monitoring** of CO, Radon, CO2, PM2.5, PM10, PM1, PM0.3, HCHO, tVOC, humidity, and temperature
+- **Real-time monitoring** of CO, Radon, CO2, PM2.5, PM10, PM1, PM0.3, HCHO, tVOC, humidity, temperature, and atmospheric pressure
 - **CO safety alerts** -- critical red warnings for dangerous carbon monoxide levels
 - **Radon advisory banner** -- separate long-term health advisory with EPA/WHO thresholds (supports pCi/L and Bq/m3)
 - **Gradient-colored graphs** that change color based on air quality levels
@@ -96,16 +96,18 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 | `tvoc_entity` | string | No* | - | Volatile organic compounds (tVOC) sensor entity ID |
 | `humidity_entity` | string | No* | - | Humidity sensor entity ID |
 | `temperature_entity` | string | No* | - | Temperature sensor entity ID |
+| `pressure_entity` | string | No* | - | Atmospheric pressure sensor entity ID (e.g. Airthings) |
 | `air_quality_entity` | string | No | - | Overall air quality index entity ([passthrough — see below](#air-quality-index-entity)) |
 | `hours_to_show` | number | No | 24 | Hours of history to display (1-168) |
 | `temperature_unit` | string | No | "auto" | Temperature unit: "auto" (detect from HA), "F" (Fahrenheit), or "C" (Celsius) |
 | `radon_unit` | string | No | "auto" | Radon unit: "auto" (detect from sensor), "pCi/L" (US), or "Bq/m3" (International) |
 | `show_min_max` | boolean | No | `false` | Overlay the min/max values of the displayed time window directly at the data points on the graph |
 | `order` | array | No | default | Custom display order for metrics (see [Sensor Order](#sensor-order)) |
-| `display` | string | No | "full" | "full" (graphs and details) or "compact" (status badge only, ideal for overview pages) |
+| `display` | string | No | "full" | "full" (graphs and details), "compact" (status badge only), or "expandable" (compact, tap to expand to full) |
 | `tap_action` | action | No | - | Standard HA action object (e.g., `{ action: navigate, navigation_path: /air-quality }`). Active in compact mode |
 | `hold_action` | action | No | - | Same as `tap_action` but fired after holding for ~500 ms |
 | `double_tap_action` | action | No | - | Same as `tap_action` but fired on double-tap |
+| `recommendation_action` | action | No | - | Standard HA action surfaced as a one-tap button on the recommendation strip (e.g. toggle a purifier/fan, or run a script). Shown only when there's an actionable recommendation |
 | `co_thresholds` | array | No | `[4, 9, 35, 100]` | Custom CO color/status thresholds (4 ascending numbers defining 5 tiers) |
 | `co2_thresholds` | array | No | `[600, 800, 1000, 1500]` | Custom CO₂ color/status thresholds |
 | `pm25_thresholds` | array | No | `[5, 15, 25, 35]` | Custom PM2.5 thresholds |
@@ -118,6 +120,8 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 | `nox_thresholds` | array | No | `[20, 50, 150, 250]` | Custom NOx thresholds (ppb) |
 | `radon_thresholds` | array | No | `[48, 100, 148, 300]` | Custom radon thresholds (Bq/m³ — even if you display in pCi/L) |
 | `humidity_thresholds` | array | No | `[30, 40, 50, 60]` | Custom humidity thresholds (%) |
+| `pressure_thresholds` | array | No | `[990, 1005, 1025, 1040]` | Custom atmospheric pressure thresholds (hPa by default; override for inHg/mmHg) |
+| `outdoor_pressure_entity` | string | No | - | Outdoor atmospheric pressure sensor for comparison |
 | `temperature_thresholds` | array | No | unit-dependent | Custom temperature thresholds (in the unit your sensor reports) |
 | `language` | string | No | "auto" | UI language. "auto" (use Home Assistant's), "en", "es", "fr", or "de" |
 | `outdoor_co2_entity` | string | No | - | Outdoor CO2 sensor for comparison |
@@ -160,6 +164,23 @@ order:
   - pm25
 ```
 
+### Recommendation Action Button
+
+Surface a one-tap button on the recommendation strip to act on what the card suggests — e.g. turn on an air purifier when it recommends "Run Air Purifier", or run a script. Uses Home Assistant's [standard action](https://www.home-assistant.io/dashboards/actions/) format, so it supports `perform-action`, `toggle`, `navigate`, `url`, `more-info`, etc. The button appears only when there's an actionable recommendation (hidden when air quality is "All Good").
+
+```yaml
+type: custom:air-quality-card
+co2_entity: sensor.air_quality_co2
+pm25_entity: sensor.air_quality_pm25
+recommendation_action:
+  action: perform-action
+  perform_action: homeassistant.toggle
+  target:
+    entity_id: fan.air_purifier
+```
+
+For per-recommendation routing (different action depending on whether it's a purifier vs. ventilation suggestion), point this at a script that branches on your sensor states.
+
 ### Compact Display Mode
 
 For overview dashboards where you want a small "go to the air quality page" indicator, use `display: compact`. Renders just the title and the overall status badge, with optional [HA tap actions](https://www.home-assistant.io/dashboards/actions/).
@@ -179,6 +200,20 @@ Compact mode:
 - Skips the history fetch (faster initial load)
 - Status badge updates in real-time from current sensor values
 - All three standard HA actions are supported: `tap_action`, `hold_action`, `double_tap_action`
+
+### Expandable Display Mode
+
+`display: expandable` starts as a compact summary and expands to the full card (graphs and details) when tapped — best of both worlds for space-constrained dashboards. A chevron indicates the toggle; tap the header again to collapse. History is fetched lazily the first time you expand.
+
+```yaml
+type: custom:air-quality-card
+name: Air Quality
+co2_entity: sensor.air_quality_co2
+pm25_entity: sensor.air_quality_pm25
+display: expandable
+```
+
+In expandable mode the tap gesture is reserved for expand/collapse, so `tap_action` is ignored.
 
 ### Custom Thresholds
 
@@ -335,9 +370,19 @@ Based on WHO 2021 Air Quality Guidelines:
 | Humid | 50-60% | Light Green | Acceptable |
 | Too Humid | > 60% | Orange | Improve ventilation |
 
+### Atmospheric Pressure
+Informational, not a health hazard — a wide green band keeps typical weather calm. Thresholds assume **hPa / mbar** (what Airthings and most HA sensors report); override `pressure_thresholds` for other units.
+| Level | Range (hPa) | Color | Meaning |
+|-------|-------------|-------|---------|
+| Low | < 990 | Orange | Stormy / rapidly falling |
+| Slightly Low | 990-1005 | Light Green | Below average |
+| Normal | 1005-1025 | Green | Typical sea-level range |
+| Slightly High | 1025-1040 | Light Green | Above average |
+| High | > 1040 | Orange | Unusually high |
+
 ## Supported Devices
 
-This card works with any sensor that provides entities for CO, Radon, CO2, PM2.5, PM10, PM1, PM0.3, HCHO, tVOC, humidity, or temperature. Use any combination -- even a single sensor works. Tested with:
+This card works with any sensor that provides entities for CO, Radon, CO2, PM2.5, PM10, PM1, PM0.3, HCHO, tVOC, humidity, temperature, or atmospheric pressure. Use any combination -- even a single sensor works. Tested with:
 
 - IKEA VINDSTYRKA / ALPSTUGA (via Matter)
 - Aqara TVOC Air Quality Monitor

@@ -156,6 +156,20 @@ assert(card._getHumidityColor(45) === '#4caf50', 'Humidity 45 = green (ideal)');
 assert(card._getHumidityColor(55) === '#8bc34a', 'Humidity 55 = light green');
 assert(card._getHumidityColor(70) === '#ff9800', 'Humidity 70 = orange (too humid)');
 
+section('Pressure Color + Status (bell, #38)');
+assert(card._getPressureColor(975) === '#ff9800', 'Pressure 975 = orange (low)');
+assert(card._getPressureColor(1000) === '#8bc34a', 'Pressure 1000 = light green (slightly low)');
+assert(card._getPressureColor(1013) === '#4caf50', 'Pressure 1013 = green (normal)');
+assert(card._getPressureColor(1030) === '#8bc34a', 'Pressure 1030 = light green (slightly high)');
+assert(card._getPressureColor(1050) === '#ff9800', 'Pressure 1050 = orange (high)');
+assert(card._getMetricStatus('pressure', 1013) === 'Normal', 'Pressure 1013 status = Normal');
+assert(card._getMetricStatus('pressure', 975) === 'Low', 'Pressure 975 status = Low');
+assert(card._getMetricStatus('pressure', 1050) === 'High', 'Pressure 1050 status = High');
+// Custom thresholds work for pressure too (e.g. inHg or a tighter band)
+const presCustom = new CardClass();
+presCustom.setConfig({ pressure_entity: 'sensor.p', pressure_thresholds: [1000, 1010, 1020, 1030] });
+assert(presCustom._getPressureColor(1015) === '#4caf50', 'custom pressure 1015 = green (normal band)');
+
 section('Temperature Color (Fahrenheit)');
 card._config.temperature_unit = 'F';
 assert(card._getTempColor(60) === '#2196f3', 'Temp 60F = blue');
@@ -265,6 +279,29 @@ setStates({ pm25: 30, co2: 1100 });
 card._config.outdoor_pm25_entity = 'sensor.outdoor_pm25';
 card._hass.states['sensor.outdoor_pm25'] = { state: '50' };
 assert(card._getRecommendation() === 'Run Air Purifier', 'Combo rec falls back to purifier when outdoor worse');
+
+section('Recommendation — Outdoor without indoor equivalent (#35)');
+
+// Indoor CO2 only (high) + outdoor PM2.5 that is LOW (no indoor PM2.5 configured).
+// Previously: outdoorPm25 (8) > indoor pm25 (defaulted 0) → false "keep windows closed".
+// Now: with no indoor PM2.5, a low outdoor reading is NOT "worse" → open window stands.
+setStates({ co2: 1100 });
+card._config.outdoor_pm25_entity = 'sensor.outdoor_pm25';
+card._hass.states['sensor.outdoor_pm25'] = { state: '8' };
+assert(card._getRecommendation() === 'Open Window', 'low outdoor PM2.5 with no indoor PM2.5 does not falsely suppress ventilation');
+
+// Same setup but outdoor PM2.5 is genuinely concerning (>= elevated tier, 25) → keep closed.
+setStates({ co2: 1100 });
+card._config.outdoor_pm25_entity = 'sensor.outdoor_pm25';
+card._hass.states['sensor.outdoor_pm25'] = { state: '40' };
+assert(card._getRecommendation() === 'Keep Windows Closed', 'high outdoor PM2.5 with no indoor PM2.5 keeps windows closed via absolute threshold');
+
+// Outdoor CO2 with no indoor CO2: needs an indoor ventilation trigger to matter.
+// Indoor humidity high (too_humid is not a ventilation key), so nothing to suppress — sanity check no crash.
+setStates({ co2: 1100 });
+card._config.outdoor_co2_entity = 'sensor.outdoor_co2';
+card._hass.states['sensor.outdoor_co2'] = { state: '450' }; // typical fresh outdoor air
+assert(card._getRecommendation() === 'Open Window', 'normal outdoor CO2 does not suppress (450 is below concerning threshold)');
 
 // ============================================================
 // RECOMMENDATION ICON TESTS
@@ -692,6 +729,49 @@ minMaxCard.setConfig({ co2_entity: 'sensor.co2', show_min_max: true });
 assert(minMaxCard._config.show_min_max === true, 'show_min_max can be enabled');
 
 // ============================================================
+// CARRY-FORWARD TO NOW (issue #39)
+// ============================================================
+
+section('Extend history to now');
+
+const extCard = new CardClass();
+extCard.setConfig({ pm1_entity: 'sensor.pm1' });
+extCard._hass = { config: { unit_system: { temperature: '°F' } }, states: {} };
+
+// Steady sensor: last history point is hours old, current value present → append point at now
+extCard._hass.states['sensor.pm1'] = { state: '0' };
+const NOW = 1000000;
+const old = [{ time: NOW - 3 * 3600 * 1000, value: 0 }];
+const extended = extCard._extendToNow(old, 'sensor.pm1', NOW);
+assert(extended.length === 2, 'steady sensor: a point is appended at now');
+assert(extended[1].time === NOW, 'appended point is at now');
+assert(extended[1].value === 0, 'appended point carries current value (0)');
+
+// Zero is a real value, not dropped
+extCard._hass.states['sensor.pm1'] = { state: '0' };
+assert(extCard._extendToNow([{ time: NOW - 7200000, value: 5 }], 'sensor.pm1', NOW)[1].value === 0, 'zero current value is carried forward, not dropped');
+
+// Last point already at now → no duplicate
+const fresh = [{ time: NOW - 500, value: 3 }];
+assert(extCard._extendToNow(fresh, 'sensor.pm1', NOW).length === 1, 'point already at edge → no duplicate appended');
+
+// Empty history → unchanged (nothing to anchor a line to)
+assert(extCard._extendToNow([], 'sensor.pm1', NOW).length === 0, 'empty history stays empty');
+
+// Unavailable/unknown current state → no append
+extCard._hass.states['sensor.pm1'] = { state: 'unavailable' };
+assert(extCard._extendToNow(old, 'sensor.pm1', NOW).length === 1, 'unavailable current state → no append');
+extCard._hass.states['sensor.pm1'] = { state: 'unknown' };
+assert(extCard._extendToNow(old, 'sensor.pm1', NOW).length === 1, 'unknown current state → no append');
+
+// Non-numeric current state → no append
+extCard._hass.states['sensor.pm1'] = { state: 'foo' };
+assert(extCard._extendToNow(old, 'sensor.pm1', NOW).length === 1, 'non-numeric current state → no append');
+
+// No entity id → unchanged
+assert(extCard._extendToNow(old, undefined, NOW).length === 1, 'missing entity id → unchanged');
+
+// ============================================================
 // METRIC ORDERING (issue #19)
 // ============================================================
 
@@ -701,8 +781,8 @@ const defaultOrderCard = new CardClass();
 defaultOrderCard.setConfig({ co2_entity: 'sensor.co2' });
 const defaultOrder = defaultOrderCard._getMetricOrder();
 assert(defaultOrder[0] === 'co', 'default order: co first');
-assert(defaultOrder[defaultOrder.length - 1] === 'temperature', 'default order: temperature last');
-assert(defaultOrder.length === 13, 'default order: all 13 metrics');
+assert(defaultOrder[defaultOrder.length - 1] === 'pressure', 'default order: pressure last');
+assert(defaultOrder.length === 14, 'default order: all 14 metrics');
 
 section('Metric order — user override');
 
@@ -719,7 +799,7 @@ assert(reordered[3] === 'pm10', 'user order: pm10 fourth');
 assert(reordered[4] === 'pm25', 'user order: pm25 fifth');
 // Unmentioned metrics get appended in default order — user never loses a sensor
 assert(reordered.includes('radon'), 'unmentioned metrics still present');
-assert(reordered.length === 13, 'user order: total still 13');
+assert(reordered.length === 14, 'user order: total still 14');
 
 section('Metric order — invalid input');
 
@@ -743,6 +823,31 @@ emptyOrderCard.setConfig({ co2_entity: 'sensor.co2', order: [] });
 assert(emptyOrderCard._getMetricOrder()[0] === 'co', 'empty array → default order');
 
 // ============================================================
+// RECOMMENDATION ACTION BUTTON (issue #34)
+// ============================================================
+
+section('Recommendation action');
+
+// No action configured → _fireRecommendationAction is a no-op
+const noRecAction = new CardClass();
+noRecAction.setConfig({ co2_entity: 'sensor.co2' });
+let recFired = null;
+noRecAction.dispatchEvent = (ev) => { recFired = ev; };
+noRecAction._fireRecommendationAction();
+assert(recFired === null, 'no recommendation_action configured → no event');
+
+// Configured → dispatches hass-action
+const withRecAction = new CardClass();
+withRecAction.setConfig({
+  co2_entity: 'sensor.co2',
+  recommendation_action: { action: 'perform-action', perform_action: 'homeassistant.toggle', target: { entity_id: 'fan.purifier' } }
+});
+let recEvent = null;
+withRecAction.dispatchEvent = (ev) => { recEvent = ev; };
+withRecAction._fireRecommendationAction();
+assert(recEvent !== null, 'recommendation_action configured → hass-action dispatched');
+
+// ============================================================
 // COMPACT DISPLAY MODE (issue #20)
 // ============================================================
 
@@ -761,6 +866,22 @@ assert(fullCard._isCompact() === false, '_isCompact() false for default display'
 // Card size: compact should be smaller
 assert(compactCard.getCardSize() === 1, 'compact getCardSize = 1');
 assert(fullCard.getCardSize() >= 3, 'full getCardSize ≥ 3');
+
+section('Expandable display mode (#36)');
+
+const expCard = new CardClass();
+expCard.setConfig({ co2_entity: 'sensor.co2', display: 'expandable' });
+assert(expCard._isExpandable() === true, '_isExpandable() true for expandable display');
+// Collapsed by default → renders compact
+assert(expCard._isCompact() === true, 'expandable starts collapsed (compact)');
+assert(expCard.getCardSize() === 1, 'collapsed expandable getCardSize = 1');
+// Simulate expand
+expCard._expanded = true;
+assert(expCard._isCompact() === false, 'expanded → full render');
+assert(expCard.getCardSize() >= 3, 'expanded expandable getCardSize ≥ 3');
+// Full mode is not expandable
+assert(fullCard._isExpandable() === false, 'full display is not expandable');
+assert(compactCard._isExpandable() === false, 'static compact is not expandable');
 
 section('Compact mode — tap actions');
 
@@ -1009,6 +1130,9 @@ card._config.hcho_entity = 'sensor.hcho';
 card._config.tvoc_entity = 'sensor.tvoc';
 assert(card.getCardSize() === 14, 'All 11 sensors = 14');
 
+card._config.pressure_entity = 'sensor.pressure';
+assert(card.getCardSize() === 15, 'pressure adds one more = 15');
+
 // ============================================================
 // GETCONFIG FORM TESTS
 // ============================================================
@@ -1036,7 +1160,9 @@ const allLabels = [
   'outdoor_co2_entity', 'outdoor_pm25_entity', 'outdoor_humidity_entity', 'outdoor_temperature_entity',
   'outdoor_co_entity', 'outdoor_hcho_entity', 'outdoor_tvoc_entity',
   'outdoor_pm1_entity', 'outdoor_pm10_entity', 'outdoor_pm03_entity',
-  'air_quality_entity', 'hours_to_show', 'temperature_unit', 'radon_unit', 'show_min_max'
+  'pressure_entity', 'outdoor_pressure_entity',
+  'air_quality_entity', 'hours_to_show', 'temperature_unit', 'radon_unit', 'show_min_max',
+  'recommendation_action'
 ];
 for (const name of allLabels) {
   const label = editor._computeLabel({ name });
@@ -1072,10 +1198,10 @@ section('History Keys');
 const freshCard = new CardClass();
 const expectedKeys = [
   'co2', 'pm25', 'pm1', 'pm10', 'pm03', 'hcho', 'tvoc', 'co', 'radon', 'radon_longterm',
-  'humidity', 'temperature',
+  'humidity', 'temperature', 'pressure',
   'outdoor_co2', 'outdoor_pm25', 'outdoor_pm1', 'outdoor_pm10', 'outdoor_pm03',
   'outdoor_hcho', 'outdoor_tvoc', 'outdoor_co',
-  'outdoor_humidity', 'outdoor_temperature'
+  'outdoor_humidity', 'outdoor_temperature', 'outdoor_pressure'
 ];
 for (const key of expectedKeys) {
   assert(Array.isArray(freshCard._history[key]), `History key '${key}' exists and is array`);
