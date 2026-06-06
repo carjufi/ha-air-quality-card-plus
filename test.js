@@ -266,6 +266,29 @@ card._config.outdoor_pm25_entity = 'sensor.outdoor_pm25';
 card._hass.states['sensor.outdoor_pm25'] = { state: '50' };
 assert(card._getRecommendation() === 'Run Air Purifier', 'Combo rec falls back to purifier when outdoor worse');
 
+section('Recommendation — Outdoor without indoor equivalent (#35)');
+
+// Indoor CO2 only (high) + outdoor PM2.5 that is LOW (no indoor PM2.5 configured).
+// Previously: outdoorPm25 (8) > indoor pm25 (defaulted 0) → false "keep windows closed".
+// Now: with no indoor PM2.5, a low outdoor reading is NOT "worse" → open window stands.
+setStates({ co2: 1100 });
+card._config.outdoor_pm25_entity = 'sensor.outdoor_pm25';
+card._hass.states['sensor.outdoor_pm25'] = { state: '8' };
+assert(card._getRecommendation() === 'Open Window', 'low outdoor PM2.5 with no indoor PM2.5 does not falsely suppress ventilation');
+
+// Same setup but outdoor PM2.5 is genuinely concerning (>= elevated tier, 25) → keep closed.
+setStates({ co2: 1100 });
+card._config.outdoor_pm25_entity = 'sensor.outdoor_pm25';
+card._hass.states['sensor.outdoor_pm25'] = { state: '40' };
+assert(card._getRecommendation() === 'Keep Windows Closed', 'high outdoor PM2.5 with no indoor PM2.5 keeps windows closed via absolute threshold');
+
+// Outdoor CO2 with no indoor CO2: needs an indoor ventilation trigger to matter.
+// Indoor humidity high (too_humid is not a ventilation key), so nothing to suppress — sanity check no crash.
+setStates({ co2: 1100 });
+card._config.outdoor_co2_entity = 'sensor.outdoor_co2';
+card._hass.states['sensor.outdoor_co2'] = { state: '450' }; // typical fresh outdoor air
+assert(card._getRecommendation() === 'Open Window', 'normal outdoor CO2 does not suppress (450 is below concerning threshold)');
+
 // ============================================================
 // RECOMMENDATION ICON TESTS
 // ============================================================

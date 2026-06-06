@@ -798,9 +798,21 @@ class AirQualityCard extends HTMLElement {
     const tvoc = this._config.tvoc_entity ? this._getNumericState(this._config.tvoc_entity) : 0;
     const humidity = this._config.humidity_entity ? this._getNumericState(this._config.humidity_entity) : 45;
 
+    // Outdoor-worse detection drives the "keep windows closed" override.
+    // When an indoor counterpart exists, compare the two (don't ventilate if
+    // outside is worse). When it doesn't (e.g. indoor CO₂ + outdoor PM2.5 only),
+    // a plain `outdoor > indoor` comparison would always fire because the
+    // missing indoor value defaults to 0 (#35). Instead fall back to an
+    // absolute "concerning" threshold — the metric's elevated tier boundary.
     const outdoorCo2 = this._config.outdoor_co2_entity ? this._getNumericState(this._config.outdoor_co2_entity) : null;
     const outdoorPm25 = this._config.outdoor_pm25_entity ? this._getNumericState(this._config.outdoor_pm25_entity) : null;
-    const outdoorIsWorse = (outdoorPm25 !== null && outdoorPm25 > pm25) || (outdoorCo2 !== null && outdoorCo2 > co2);
+    const pm25Worse = outdoorPm25 !== null && (this._config.pm25_entity
+      ? outdoorPm25 > pm25
+      : outdoorPm25 >= this._metricThresholds('pm25')[2]);
+    const co2Worse = outdoorCo2 !== null && (this._config.co2_entity
+      ? outdoorCo2 > co2
+      : outdoorCo2 >= this._metricThresholds('co2')[2]);
+    const outdoorIsWorse = pm25Worse || co2Worse;
 
     // CO life-safety first (never suppressed by outdoor override)
     if (co > 100) return 'co_danger';
@@ -1674,7 +1686,10 @@ class AirQualityCard extends HTMLElement {
       } else if (recKey === 'keep_windows_closed') {
         const outdoorPm25 = this._config.outdoor_pm25_entity ? this._getNumericState(this._config.outdoor_pm25_entity) : null;
         const outdoorCo2 = this._config.outdoor_co2_entity ? this._getNumericState(this._config.outdoor_co2_entity) : null;
-        if (outdoorPm25 !== null && outdoorPm25 > 35) subtitle = this._ts('subtitle', 'keep_closed_outdoor_pm25_poor', { value: outdoorPm25.toFixed(0) });
+        // Without an indoor PM2.5 to compare against, "worse than indoor" is
+        // meaningless — phrase it in absolute terms instead (#35).
+        const noIndoorPm25 = !this._config.pm25_entity;
+        if (outdoorPm25 !== null && (outdoorPm25 > 35 || noIndoorPm25)) subtitle = this._ts('subtitle', 'keep_closed_outdoor_pm25_poor', { value: outdoorPm25.toFixed(0) });
         else if (outdoorPm25 !== null) subtitle = this._ts('subtitle', 'keep_closed_outdoor_pm25', { value: outdoorPm25.toFixed(0) });
         else if (outdoorCo2 !== null) subtitle = this._ts('subtitle', 'keep_closed_outdoor_co2', { value: Math.round(outdoorCo2) });
         else subtitle = this._t('subtitle', 'keep_closed_generic');
