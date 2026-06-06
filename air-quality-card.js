@@ -498,8 +498,15 @@ class AirQualityCard extends HTMLElement {
 
       const results = await Promise.all(promises);
 
+      const endMs = endTime.getTime();
       keys.forEach((key, i) => {
-        this._history[key] = this._processHistory(results[i]);
+        const processed = this._processHistory(results[i]);
+        // Carry the latest known reading forward to the right edge of the
+        // window. With `minimal_response`, HA collapses runs of identical
+        // states, so a steady sensor (e.g. clean-air PM at 0, NOx at 1) only
+        // emits a point when it changes — leaving the line ending hours ago.
+        // HA's own history-graph extends the last state to "now"; we match it.
+        this._history[key] = this._extendToNow(processed, this._config[`${key}_entity`], endMs);
       });
 
       this._historyLoaded = true;
@@ -514,6 +521,21 @@ class AirQualityCard extends HTMLElement {
     const uri = `history/period/${startTime.toISOString()}?filter_entity_id=${entityId}&end_time=${endTime.toISOString()}&minimal_response&no_attributes`;
     const response = await this._hass.callApi('GET', uri);
     return response?.[0] || [];
+  }
+
+  // Append the entity's current value as a final point at `nowMs` so the line
+  // spans the full window even when `minimal_response` collapsed a steady run.
+  // Skips when there's no data, no current numeric reading, or the last point
+  // is already essentially at `now` (avoids a zero-length duplicate segment).
+  _extendToNow(processed, entityId, nowMs) {
+    if (!entityId || !processed.length) return processed;
+    const state = this._hass?.states[entityId]?.state;
+    if (state === undefined || state === 'unknown' || state === 'unavailable') return processed;
+    const value = parseFloat(state);
+    if (isNaN(value)) return processed;
+    const last = processed[processed.length - 1];
+    if (nowMs - last.time < 1000) return processed; // already at the edge
+    return [...processed, { time: nowMs, value }];
   }
 
   _processHistory(history) {

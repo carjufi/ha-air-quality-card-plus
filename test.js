@@ -692,6 +692,49 @@ minMaxCard.setConfig({ co2_entity: 'sensor.co2', show_min_max: true });
 assert(minMaxCard._config.show_min_max === true, 'show_min_max can be enabled');
 
 // ============================================================
+// CARRY-FORWARD TO NOW (issue #39)
+// ============================================================
+
+section('Extend history to now');
+
+const extCard = new CardClass();
+extCard.setConfig({ pm1_entity: 'sensor.pm1' });
+extCard._hass = { config: { unit_system: { temperature: '°F' } }, states: {} };
+
+// Steady sensor: last history point is hours old, current value present → append point at now
+extCard._hass.states['sensor.pm1'] = { state: '0' };
+const NOW = 1000000;
+const old = [{ time: NOW - 3 * 3600 * 1000, value: 0 }];
+const extended = extCard._extendToNow(old, 'sensor.pm1', NOW);
+assert(extended.length === 2, 'steady sensor: a point is appended at now');
+assert(extended[1].time === NOW, 'appended point is at now');
+assert(extended[1].value === 0, 'appended point carries current value (0)');
+
+// Zero is a real value, not dropped
+extCard._hass.states['sensor.pm1'] = { state: '0' };
+assert(extCard._extendToNow([{ time: NOW - 7200000, value: 5 }], 'sensor.pm1', NOW)[1].value === 0, 'zero current value is carried forward, not dropped');
+
+// Last point already at now → no duplicate
+const fresh = [{ time: NOW - 500, value: 3 }];
+assert(extCard._extendToNow(fresh, 'sensor.pm1', NOW).length === 1, 'point already at edge → no duplicate appended');
+
+// Empty history → unchanged (nothing to anchor a line to)
+assert(extCard._extendToNow([], 'sensor.pm1', NOW).length === 0, 'empty history stays empty');
+
+// Unavailable/unknown current state → no append
+extCard._hass.states['sensor.pm1'] = { state: 'unavailable' };
+assert(extCard._extendToNow(old, 'sensor.pm1', NOW).length === 1, 'unavailable current state → no append');
+extCard._hass.states['sensor.pm1'] = { state: 'unknown' };
+assert(extCard._extendToNow(old, 'sensor.pm1', NOW).length === 1, 'unknown current state → no append');
+
+// Non-numeric current state → no append
+extCard._hass.states['sensor.pm1'] = { state: 'foo' };
+assert(extCard._extendToNow(old, 'sensor.pm1', NOW).length === 1, 'non-numeric current state → no append');
+
+// No entity id → unchanged
+assert(extCard._extendToNow(old, undefined, NOW).length === 1, 'missing entity id → unchanged');
+
+// ============================================================
 // METRIC ORDERING (issue #19)
 // ============================================================
 
