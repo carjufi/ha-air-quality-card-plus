@@ -823,6 +823,31 @@ emptyOrderCard.setConfig({ co2_entity: 'sensor.co2', order: [] });
 assert(emptyOrderCard._getMetricOrder()[0] === 'co', 'empty array → default order');
 
 // ============================================================
+// RECOMMENDATION ACTION BUTTON (issue #34)
+// ============================================================
+
+section('Recommendation action');
+
+// No action configured → _fireRecommendationAction is a no-op
+const noRecAction = new CardClass();
+noRecAction.setConfig({ co2_entity: 'sensor.co2' });
+let recFired = null;
+noRecAction.dispatchEvent = (ev) => { recFired = ev; };
+noRecAction._fireRecommendationAction();
+assert(recFired === null, 'no recommendation_action configured → no event');
+
+// Configured → dispatches hass-action
+const withRecAction = new CardClass();
+withRecAction.setConfig({
+  co2_entity: 'sensor.co2',
+  recommendation_action: { action: 'perform-action', perform_action: 'homeassistant.toggle', target: { entity_id: 'fan.purifier' } }
+});
+let recEvent = null;
+withRecAction.dispatchEvent = (ev) => { recEvent = ev; };
+withRecAction._fireRecommendationAction();
+assert(recEvent !== null, 'recommendation_action configured → hass-action dispatched');
+
+// ============================================================
 // COMPACT DISPLAY MODE (issue #20)
 // ============================================================
 
@@ -1120,7 +1145,8 @@ const allLabels = [
   'outdoor_co_entity', 'outdoor_hcho_entity', 'outdoor_tvoc_entity',
   'outdoor_pm1_entity', 'outdoor_pm10_entity', 'outdoor_pm03_entity',
   'pressure_entity', 'outdoor_pressure_entity',
-  'air_quality_entity', 'hours_to_show', 'temperature_unit', 'radon_unit', 'show_min_max'
+  'air_quality_entity', 'hours_to_show', 'temperature_unit', 'radon_unit', 'show_min_max',
+  'recommendation_action'
 ];
 for (const name of allLabels) {
   const label = editor._computeLabel({ name });

@@ -107,6 +107,7 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 | `tap_action` | action | No | - | Standard HA action object (e.g., `{ action: navigate, navigation_path: /air-quality }`). Active in compact mode |
 | `hold_action` | action | No | - | Same as `tap_action` but fired after holding for ~500 ms |
 | `double_tap_action` | action | No | - | Same as `tap_action` but fired on double-tap |
+| `recommendation_action` | action | No | - | Standard HA action surfaced as a one-tap button on the recommendation strip (e.g. toggle a purifier/fan, or run a script). Shown only when there's an actionable recommendation |
 | `co_thresholds` | array | No | `[4, 9, 35, 100]` | Custom CO color/status thresholds (4 ascending numbers defining 5 tiers) |
 | `co2_thresholds` | array | No | `[600, 800, 1000, 1500]` | Custom CO₂ color/status thresholds |
 | `pm25_thresholds` | array | No | `[5, 15, 25, 35]` | Custom PM2.5 thresholds |
@@ -162,6 +163,23 @@ order:
   - pm10
   - pm25
 ```
+
+### Recommendation Action Button
+
+Surface a one-tap button on the recommendation strip to act on what the card suggests — e.g. turn on an air purifier when it recommends "Run Air Purifier", or run a script. Uses Home Assistant's [standard action](https://www.home-assistant.io/dashboards/actions/) format, so it supports `perform-action`, `toggle`, `navigate`, `url`, `more-info`, etc. The button appears only when there's an actionable recommendation (hidden when air quality is "All Good").
+
+```yaml
+type: custom:air-quality-card
+co2_entity: sensor.air_quality_co2
+pm25_entity: sensor.air_quality_pm25
+recommendation_action:
+  action: perform-action
+  perform_action: homeassistant.toggle
+  target:
+    entity_id: fan.air_purifier
+```
+
+For per-recommendation routing (different action depending on whether it's a purifier vs. ventilation suggestion), point this at a script that branches on your sensor states.
 
 ### Compact Display Mode
 
