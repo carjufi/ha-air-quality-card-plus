@@ -168,6 +168,7 @@ class AirQualityCard extends HTMLElement {
     this._historyLoaded = false;
     this._graphData = {};
     this._isDragging = false;
+    this._expanded = false; // expandable display mode: collapsed by default
   }
 
   setConfig(config) {
@@ -315,8 +316,29 @@ class AirQualityCard extends HTMLElement {
     });
   }
 
+  // True when the card should render its compact summary. Static `compact`
+  // always is; `expandable` is compact until the user taps to expand (#36).
   _isCompact() {
-    return this._config.display === 'compact';
+    if (this._config.display === 'compact') return true;
+    if (this._config.display === 'expandable') return !this._expanded;
+    return false;
+  }
+
+  _isExpandable() {
+    return this._config.display === 'expandable';
+  }
+
+  // Flip between the compact summary and the full card, re-rendering in place.
+  // History is fetched lazily the first time the user expands.
+  _toggleExpanded() {
+    this._expanded = !this._expanded;
+    this._initialRender();
+    this._updateStates();
+    if (this._expanded && !this._historyLoaded) {
+      this._loadHistory();
+    } else if (this._expanded && this._historyLoaded) {
+      this._renderGraphs();
+    }
   }
 
   // Resolve the active translation language. Order of precedence:
@@ -896,7 +918,11 @@ class AirQualityCard extends HTMLElement {
   }
 
   _renderCompact() {
-    const hasAction = !!this._config.tap_action;
+    const expandable = this._isExpandable();
+    // In expandable mode the tap is reserved for expand/collapse, so any
+    // configured tap_action is ignored while collapsed.
+    const hasAction = !!this._config.tap_action && !expandable;
+    const clickable = hasAction || expandable;
     this.shadowRoot.innerHTML = `
       <style>
         :host {
@@ -909,9 +935,9 @@ class AirQualityCard extends HTMLElement {
         }
         ha-card.compact {
           padding: 12px 16px;
-          ${hasAction ? 'cursor: pointer; transition: background 0.15s ease;' : ''}
+          ${clickable ? 'cursor: pointer; transition: background 0.15s ease;' : ''}
         }
-        ${hasAction ? `
+        ${clickable ? `
         ha-card.compact:hover {
           background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04);
         }
@@ -922,10 +948,19 @@ class AirQualityCard extends HTMLElement {
           align-items: center;
           gap: 12px;
         }
+        .compact-left {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          min-width: 0;
+        }
         .title {
           font-size: 1.05em;
           font-weight: 600;
           color: var(--primary-text-color);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
         .status-badge {
           display: flex;
@@ -941,10 +976,18 @@ class AirQualityCard extends HTMLElement {
         .status-badge ha-icon {
           --mdc-icon-size: 18px;
         }
+        .expand-chevron {
+          --mdc-icon-size: 20px;
+          color: var(--secondary-text-color);
+          flex: 0 0 auto;
+        }
       </style>
       <ha-card class="compact">
         <div class="compact-row">
-          <span class="title">${this._config.name}</span>
+          <span class="compact-left">
+            ${expandable ? '<ha-icon class="expand-chevron" icon="mdi:chevron-down"></ha-icon>' : ''}
+            <span class="title">${this._config.name}</span>
+          </span>
           <div class="status-badge" id="status-badge">
             <ha-icon id="status-icon" icon="mdi:leaf"></ha-icon>
             <span id="status-text">Loading…</span>
@@ -953,6 +996,10 @@ class AirQualityCard extends HTMLElement {
       </ha-card>
     `;
     const card = this.shadowRoot.querySelector('ha-card');
+    if (card && expandable) {
+      card.addEventListener('click', () => this._toggleExpanded());
+      return; // expand owns the tap; skip tap/hold action wiring
+    }
     if (card && hasAction) {
       card.addEventListener('click', () => this._fireAction('tap'));
     }
@@ -1023,9 +1070,29 @@ class AirQualityCard extends HTMLElement {
           margin-bottom: 12px;
         }
 
+        /* Expandable mode: the header doubles as a collapse control (#36). */
+        .header--collapsible {
+          cursor: pointer;
+          margin: -4px -4px 8px;
+          padding: 4px;
+          border-radius: 8px;
+          transition: background 0.15s ease;
+        }
+        .header--collapsible:hover {
+          background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04);
+        }
+
         .title {
           font-size: 1.1em;
           font-weight: 600;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .collapse-chevron {
+          --mdc-icon-size: 20px;
+          color: var(--secondary-text-color);
         }
 
         .status-badge {
@@ -1340,8 +1407,10 @@ class AirQualityCard extends HTMLElement {
 
       <ha-card>
         <div class="card">
-          <div class="header">
-            <span class="title">${this._config.name}</span>
+          <div class="header${this._isExpandable() ? ' header--collapsible' : ''}" id="card-header">
+            <span class="title">
+              ${this._isExpandable() ? '<ha-icon class="collapse-chevron" icon="mdi:chevron-up"></ha-icon>' : ''}${this._config.name}
+            </span>
             <div class="status-badge" id="status-badge">
               <ha-icon id="status-icon" icon="mdi:leaf"></ha-icon>
               <span id="status-text">Good</span>
@@ -1679,6 +1748,11 @@ class AirQualityCard extends HTMLElement {
         e.stopPropagation();
         this._fireRecommendationAction();
       });
+    }
+
+    if (this._isExpandable()) {
+      const header = this.shadowRoot.getElementById('card-header');
+      if (header) header.addEventListener('click', () => this._toggleExpanded());
     }
   }
 
@@ -2645,7 +2719,7 @@ if (LitElement && !customElements.get('air-quality-card-editor')) {
               { value: 'temperature', label: 'Temperature' },
               { value: 'pressure', label: 'Pressure' }
             ] } } },
-            { name: 'display', selector: { select: { options: [{ value: 'full', label: 'Full (graphs and details)' }, { value: 'compact', label: 'Compact (status badge only)' }], mode: 'dropdown' } } },
+            { name: 'display', selector: { select: { options: [{ value: 'full', label: 'Full (graphs and details)' }, { value: 'compact', label: 'Compact (status badge only)' }, { value: 'expandable', label: 'Expandable (compact, tap to expand)' }], mode: 'dropdown' } } },
             { name: 'tap_action', selector: { ui_action: {} } },
             { name: 'hold_action', selector: { ui_action: {} } },
             { name: 'double_tap_action', selector: { ui_action: {} } },

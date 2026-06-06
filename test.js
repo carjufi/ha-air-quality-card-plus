@@ -867,6 +867,22 @@ assert(fullCard._isCompact() === false, '_isCompact() false for default display'
 assert(compactCard.getCardSize() === 1, 'compact getCardSize = 1');
 assert(fullCard.getCardSize() >= 3, 'full getCardSize ≥ 3');
 
+section('Expandable display mode (#36)');
+
+const expCard = new CardClass();
+expCard.setConfig({ co2_entity: 'sensor.co2', display: 'expandable' });
+assert(expCard._isExpandable() === true, '_isExpandable() true for expandable display');
+// Collapsed by default → renders compact
+assert(expCard._isCompact() === true, 'expandable starts collapsed (compact)');
+assert(expCard.getCardSize() === 1, 'collapsed expandable getCardSize = 1');
+// Simulate expand
+expCard._expanded = true;
+assert(expCard._isCompact() === false, 'expanded → full render');
+assert(expCard.getCardSize() >= 3, 'expanded expandable getCardSize ≥ 3');
+// Full mode is not expandable
+assert(fullCard._isExpandable() === false, 'full display is not expandable');
+assert(compactCard._isExpandable() === false, 'static compact is not expandable');
+
 section('Compact mode — tap actions');
 
 // _fireAction is a no-op when the corresponding action isn't configured

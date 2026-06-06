@@ -103,7 +103,7 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 | `radon_unit` | string | No | "auto" | Radon unit: "auto" (detect from sensor), "pCi/L" (US), or "Bq/m3" (International) |
 | `show_min_max` | boolean | No | `false` | Overlay the min/max values of the displayed time window directly at the data points on the graph |
 | `order` | array | No | default | Custom display order for metrics (see [Sensor Order](#sensor-order)) |
-| `display` | string | No | "full" | "full" (graphs and details) or "compact" (status badge only, ideal for overview pages) |
+| `display` | string | No | "full" | "full" (graphs and details), "compact" (status badge only), or "expandable" (compact, tap to expand to full) |
 | `tap_action` | action | No | - | Standard HA action object (e.g., `{ action: navigate, navigation_path: /air-quality }`). Active in compact mode |
 | `hold_action` | action | No | - | Same as `tap_action` but fired after holding for ~500 ms |
 | `double_tap_action` | action | No | - | Same as `tap_action` but fired on double-tap |
@@ -200,6 +200,20 @@ Compact mode:
 - Skips the history fetch (faster initial load)
 - Status badge updates in real-time from current sensor values
 - All three standard HA actions are supported: `tap_action`, `hold_action`, `double_tap_action`
+
+### Expandable Display Mode
+
+`display: expandable` starts as a compact summary and expands to the full card (graphs and details) when tapped — best of both worlds for space-constrained dashboards. A chevron indicates the toggle; tap the header again to collapse. History is fetched lazily the first time you expand.
+
+```yaml
+type: custom:air-quality-card
+name: Air Quality
+co2_entity: sensor.air_quality_co2
+pm25_entity: sensor.air_quality_pm25
+display: expandable
+```
+
+In expandable mode the tap gesture is reserved for expand/collapse, so `tap_action` is ignored.
 
 ### Custom Thresholds
 
