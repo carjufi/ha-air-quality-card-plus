@@ -883,6 +883,104 @@ assert(expCard.getCardSize() >= 3, 'expanded expandable getCardSize ≥ 3');
 assert(fullCard._isExpandable() === false, 'full display is not expandable');
 assert(compactCard._isExpandable() === false, 'static compact is not expandable');
 
+// ============================================================
+// COMPACT ALERT CHIPS + AUTO-EXPAND (issue #40)
+// ============================================================
+
+section('Abnormal metric detection (#40)');
+
+const abCard = new CardClass();
+abCard.setConfig({
+  co2_entity: 'sensor.co2', pm25_entity: 'sensor.pm25',
+  humidity_entity: 'sensor.hum', temperature_entity: 'sensor.temp'
+});
+abCard._hass = { config: { unit_system: { temperature: '°F' } }, states: {
+  'sensor.co2': { state: '1600' },                    // Poor → red
+  'sensor.pm25': { state: '20' },                     // Moderate → amber
+  'sensor.hum': { state: '45' },                      // Comfortable → green
+  'sensor.temp': { state: '66', attributes: {} }      // Cool → light blue (calm)
+} };
+let abnormal = abCard._getAbnormalMetrics();
+assert(abnormal.length === 2, 'two metrics out of range');
+assert(abnormal[0].metric === 'co2', 'most severe first (red CO2)');
+assert(abnormal[0].color === '#f44336', 'CO2 chip is red');
+assert(abnormal[0].label === 'CO₂', 'CO2 chip label');
+assert(abnormal[1].metric === 'pm25', 'amber PM2.5 second');
+assert(abnormal[1].status === 'Moderate', 'chip carries the status label');
+
+// Cold (blue) is outside the comfort band → flagged; Cool (light blue) is not
+abCard._hass.states['sensor.temp'].state = '60';
+abnormal = abCard._getAbnormalMetrics();
+assert(abnormal.some(c => c.metric === 'temperature' && c.color === '#2196f3'), 'Cold temperature flagged');
+
+// All healthy → empty
+abCard._hass.states['sensor.co2'].state = '500';
+abCard._hass.states['sensor.pm25'].state = '3';
+abCard._hass.states['sensor.temp'].state = '70';
+assert(abCard._getAbnormalMetrics().length === 0, 'all healthy → no chips');
+
+// Unavailable sensor is skipped, not flagged as Too Dry at implicit 0
+abCard._hass.states['sensor.hum'].state = 'unavailable';
+assert(abCard._getAbnormalMetrics().length === 0, 'unavailable sensor skipped');
+abCard._hass.states['sensor.hum'].state = '25';
+abnormal = abCard._getAbnormalMetrics();
+assert(abnormal.length === 1 && abnormal[0].status === 'Too Dry', 'Too Dry humidity flagged');
+
+// Radon uses max(short, long) in Bq/m³
+const radonAbCard = new CardClass();
+radonAbCard.setConfig({ radon_entity: 'sensor.radon' });
+radonAbCard._hass = { config: { unit_system: { temperature: '°F' } }, states: {
+  'sensor.radon': { state: '200', attributes: { unit_of_measurement: 'Bq/m³' } }
+} };
+abnormal = radonAbCard._getAbnormalMetrics();
+assert(abnormal.length === 1 && abnormal[0].metric === 'radon', 'high radon flagged');
+radonAbCard._hass.states['sensor.radon'].state = '20';
+assert(radonAbCard._getAbnormalMetrics().length === 0, 'low radon not flagged');
+
+// compact_alerts defaults on
+assert(abCard._config.compact_alerts === true, 'compact_alerts defaults to true');
+
+section('Auto-expand (#40)');
+
+const aeCard = new CardClass();
+aeCard.setConfig({ co2_entity: 'sensor.co2', display: 'expandable', auto_expand: true });
+aeCard._hass = { config: { unit_system: { temperature: '°F' } }, states: { 'sensor.co2': { state: '1600' } } };
+let aeRenders = 0;
+aeCard._initialRender = () => { aeRenders++; };
+aeCard._loadHistory = () => {};
+aeCard._renderGraphs = () => {};
+aeCard._maybeAutoExpand();
+assert(aeCard._expanded === true, 'out-of-range CO2 → auto-expanded');
+assert(aeRenders === 1, 'auto-expand re-rendered once');
+aeCard._maybeAutoExpand();
+assert(aeRenders === 1, 'no state change → no re-render');
+// Recovery → auto-collapse
+aeCard._hass.states['sensor.co2'].state = '500';
+aeCard._maybeAutoExpand();
+assert(aeCard._expanded === false, 'recovered → auto-collapsed');
+// A manual toggle takes over for the session
+aeCard._hass.states['sensor.co2'].state = '1600';
+aeCard._updateStates = () => {};
+aeCard._toggleExpanded(); // manual expand
+assert(aeCard._userToggled === true, '_toggleExpanded marks manual override');
+aeCard._hass.states['sensor.co2'].state = '500';
+aeCard._maybeAutoExpand();
+assert(aeCard._expanded === true, 'manual toggle pins state against auto-collapse');
+
+// auto_expand is a no-op without expandable display or without opt-in
+const aeFull = new CardClass();
+aeFull.setConfig({ co2_entity: 'sensor.co2', auto_expand: true });
+aeFull._hass = { config: { unit_system: { temperature: '°F' } }, states: { 'sensor.co2': { state: '1600' } } };
+aeFull._initialRender = () => { throw new Error('should not re-render'); };
+aeFull._maybeAutoExpand();
+assert(aeFull._expanded === false, 'auto_expand ignored for full display');
+const aeNoOpt = new CardClass();
+aeNoOpt.setConfig({ co2_entity: 'sensor.co2', display: 'expandable' });
+aeNoOpt._hass = { config: { unit_system: { temperature: '°F' } }, states: { 'sensor.co2': { state: '1600' } } };
+aeNoOpt._initialRender = () => { throw new Error('should not re-render'); };
+aeNoOpt._maybeAutoExpand();
+assert(aeNoOpt._expanded === false, 'expandable without auto_expand stays collapsed');
+
 section('Compact mode — tap actions');
 
 // _fireAction is a no-op when the corresponding action isn't configured
