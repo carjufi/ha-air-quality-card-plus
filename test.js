@@ -925,6 +925,14 @@ assert(abCard._getAbnormalMetrics().length === 0, 'unavailable sensor skipped');
 abCard._hass.states['sensor.hum'].state = '25';
 abnormal = abCard._getAbnormalMetrics();
 assert(abnormal.length === 1 && abnormal[0].status === 'Too Dry', 'Too Dry humidity flagged');
+assert(abnormal[0].label === 'Humidity', 'humidity chip label localized (en)');
+
+// Chip labels for word-metrics follow the card language
+const abEs = new CardClass();
+abEs.setConfig({ humidity_entity: 'sensor.hum', language: 'es' });
+abEs._hass = { config: { unit_system: { temperature: '°F' } }, states: { 'sensor.hum': { state: '25' } } };
+const abEsChips = abEs._getAbnormalMetrics();
+assert(abEsChips.length === 1 && abEsChips[0].label === 'Humedad', 'humidity chip label localized (es)');
 
 // Radon uses max(short, long) in Bq/m³
 const radonAbCard = new CardClass();
