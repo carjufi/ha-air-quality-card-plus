@@ -981,6 +981,82 @@ aeNoOpt._initialRender = () => { throw new Error('should not re-render'); };
 aeNoOpt._maybeAutoExpand();
 assert(aeNoOpt._expanded === false, 'expandable without auto_expand stays collapsed');
 
+// ============================================================
+// NOX INDEX + OUTDOOR NOX (issue #41)
+// ============================================================
+
+section('NOx measurement type auto-detection (#41)');
+
+const noxCard = new CardClass();
+noxCard.setConfig({ nox_entity: 'sensor.nox' });
+// AirGradient / ESPHome SGP41 NOx Index entities carry no unit_of_measurement
+noxCard._hass = { config: { unit_system: { temperature: '°F' } }, states: { 'sensor.nox': { state: '1', attributes: {} } } };
+assert(noxCard._isNOxIndex() === true, 'missing unit_of_measurement → NOx Index');
+assert(noxCard._getNOxUnit() === '', 'index mode has no unit suffix');
+assert(noxCard._noxMetric() === 'nox_index', 'index mode uses nox_index thresholds');
+noxCard._hass.states['sensor.nox'].attributes = { unit_of_measurement: '' };
+assert(noxCard._isNOxIndex() === true, 'empty unit_of_measurement → NOx Index');
+noxCard._hass.states['sensor.nox'].attributes = { unit_of_measurement: 'NOx Index' };
+assert(noxCard._isNOxIndex() === true, "'NOx Index' unit → NOx Index");
+noxCard._hass.states['sensor.nox'].attributes = { unit_of_measurement: 'ppb' };
+assert(noxCard._isNOxIndex() === false, 'ppb unit → absolute');
+assert(noxCard._getNOxUnit() === 'ppb', 'absolute mode shows ppb');
+assert(noxCard._noxMetric() === 'nox_ppb', 'absolute mode uses nox_ppb thresholds');
+noxCard._hass.states['sensor.nox'].attributes = { unit_of_measurement: 'µg/m³' }; // U+00B5 micro sign (HA core)
+assert(noxCard._isNOxIndex() === false, 'µg/m³ (micro sign) → absolute');
+noxCard._hass.states['sensor.nox'].attributes = { unit_of_measurement: 'μg/m³' }; // U+03BC Greek mu (card display strings)
+assert(noxCard._isNOxIndex() === false, 'μg/m³ (Greek mu) → absolute');
+// Explicit nox_unit config beats auto-detection
+noxCard.setConfig({ nox_entity: 'sensor.nox', nox_unit: 'index' });
+assert(noxCard._isNOxIndex() === true, 'nox_unit: index forces index mode');
+noxCard.setConfig({ nox_entity: 'sensor.nox', nox_unit: 'ppb' });
+noxCard._hass.states['sensor.nox'].attributes = {};
+assert(noxCard._isNOxIndex() === false, 'nox_unit: ppb forces absolute despite missing unit');
+
+section('NOx Index colors (Sensirion/AirGradient bands)');
+
+const noxIdx = new CardClass();
+noxIdx.setConfig({ nox_entity: 'sensor.nox', nox_unit: 'index' });
+noxIdx._hass = { config: { unit_system: { temperature: '°F' } }, states: {} };
+assert(noxIdx._getNOxColor(1) === '#4caf50', 'index 1 (clean-air baseline) = green');
+assert(noxIdx._getNOxColor(4) === '#4caf50', 'index 4 = green');
+assert(noxIdx._getNOxColor(10) === '#8bc34a', 'index 10 = light green');
+assert(noxIdx._getNOxColor(100) === '#ffc107', 'index 100 = yellow');
+assert(noxIdx._getNOxColor(200) === '#ff9800', 'index 200 = orange');
+assert(noxIdx._getNOxColor(350) === '#f44336', 'index 350 = red');
+assert(noxIdx._getMetricStatus('nox_index', 1) === 'Excellent', 'index 1 = Excellent');
+assert(noxIdx._getMetricStatus('nox_index', 25) === 'Moderate', 'index 25 = Moderate (>20 Sensirion purifier trigger)');
+
+section('NOx ppb colors (WHO/EPA NO2 anchors)');
+
+const noxPpb = new CardClass();
+noxPpb.setConfig({ nox_entity: 'sensor.nox', nox_unit: 'ppb' });
+noxPpb._hass = { config: { unit_system: { temperature: '°F' } }, states: {} };
+assert(noxPpb._getNOxColor(10) === '#4caf50', 'ppb 10 = green');
+assert(noxPpb._getNOxColor(40) === '#8bc34a', 'ppb 40 = light green (under EPA annual 53)');
+assert(noxPpb._getNOxColor(80) === '#ffc107', 'ppb 80 = yellow (under EPA 1-hr 100)');
+assert(noxPpb._getNOxColor(200) === '#ff9800', 'ppb 200 = orange');
+assert(noxPpb._getNOxColor(400) === '#f44336', 'ppb 400 = red (over AQI USG/Unhealthy 360)');
+
+// Custom nox_thresholds override applies in either mode
+const noxCustom = new CardClass();
+noxCustom.setConfig({ nox_entity: 'sensor.nox', nox_unit: 'index', nox_thresholds: [10, 30, 60, 100] });
+noxCustom._hass = { config: { unit_system: { temperature: '°F' } }, states: {} };
+assert(noxCustom._getNOxColor(50) === '#ffc107', 'custom nox_thresholds respected in index mode');
+
+section('Outdoor NOx (#41)');
+
+// outdoor_nox_entity alone satisfies config validation and promotes in outdoor-only mode
+const outNox = new CardClass();
+outNox.setConfig({ outdoor_nox_entity: 'sensor.out_nox' });
+assert(outNox._outdoorOnly === true, 'outdoor NOx only → outdoor-only mode');
+assert(outNox._config.nox_entity === 'sensor.out_nox', 'outdoor NOx promoted to primary slot');
+// Paired with an indoor sensor it stays an overlay
+const pairNox = new CardClass();
+pairNox.setConfig({ nox_entity: 'sensor.nox', outdoor_nox_entity: 'sensor.out_nox' });
+assert(pairNox._outdoorOnly === false, 'indoor+outdoor NOx → normal mode');
+assert(pairNox._config.outdoor_nox_entity === 'sensor.out_nox', 'outdoor NOx kept as overlay');
+
 section('Compact mode — tap actions');
 
 // _fireAction is a no-op when the corresponding action isn't configured
@@ -1254,13 +1330,15 @@ assert(typeof editor._computeLabel === 'function', 'computeLabel is a function')
 // Check all expected labels exist
 const allLabels = [
   'name', 'co2_entity', 'pm25_entity', 'humidity_entity', 'temperature_entity',
-  'radon_entity', 'radon_longterm_entity', 'co_entity', 'hcho_entity', 'tvoc_entity', 'pm1_entity', 'pm10_entity', 'pm03_entity',
+  'radon_entity', 'radon_longterm_entity', 'co_entity', 'hcho_entity', 'tvoc_entity',
+  'pm4_entity', 'nox_entity', 'pm1_entity', 'pm10_entity', 'pm03_entity',
   'outdoor_co2_entity', 'outdoor_pm25_entity', 'outdoor_humidity_entity', 'outdoor_temperature_entity',
   'outdoor_co_entity', 'outdoor_hcho_entity', 'outdoor_tvoc_entity',
-  'outdoor_pm1_entity', 'outdoor_pm10_entity', 'outdoor_pm03_entity',
+  'outdoor_pm1_entity', 'outdoor_pm10_entity', 'outdoor_pm03_entity', 'outdoor_nox_entity',
   'pressure_entity', 'outdoor_pressure_entity',
   'air_quality_entity', 'hours_to_show', 'temperature_unit', 'radon_unit', 'show_min_max',
-  'recommendation_action'
+  'tvoc_unit', 'nox_unit', 'language',
+  'recommendation_action', 'compact_alerts', 'auto_expand'
 ];
 for (const name of allLabels) {
   const label = editor._computeLabel({ name });
@@ -1295,10 +1373,10 @@ section('History Keys');
 
 const freshCard = new CardClass();
 const expectedKeys = [
-  'co2', 'pm25', 'pm1', 'pm10', 'pm03', 'hcho', 'tvoc', 'co', 'radon', 'radon_longterm',
+  'co2', 'pm25', 'pm1', 'pm10', 'pm03', 'pm4', 'hcho', 'tvoc', 'nox', 'co', 'radon', 'radon_longterm',
   'humidity', 'temperature', 'pressure',
   'outdoor_co2', 'outdoor_pm25', 'outdoor_pm1', 'outdoor_pm10', 'outdoor_pm03',
-  'outdoor_hcho', 'outdoor_tvoc', 'outdoor_co',
+  'outdoor_hcho', 'outdoor_tvoc', 'outdoor_nox', 'outdoor_co',
   'outdoor_humidity', 'outdoor_temperature', 'outdoor_pressure'
 ];
 for (const key of expectedKeys) {
