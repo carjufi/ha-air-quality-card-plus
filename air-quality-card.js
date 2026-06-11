@@ -122,7 +122,7 @@ const TRANSLATIONS = {
       temperature_unit: 'Temperature Unit', radon_unit: 'Radon Unit',
       tvoc_unit: 'tVOC Measurement Type', nox_unit: 'NOx Measurement Type', language: 'Language',
       recommendation_action: 'Recommendation Action (button)',
-      compact_alerts: 'Alert badges while collapsed',
+      compact_alerts: 'Alert chips while collapsed',
       auto_expand: 'Auto-expand when air quality degrades',
       section_additional: 'Additional Sensors', section_outdoor: 'Outdoor Sensors',
       section_advanced: 'Advanced'
@@ -186,6 +186,7 @@ class AirQualityCard extends HTMLElement {
     this._isDragging = false;
     this._expanded = false; // expandable display mode: collapsed by default
     this._userToggled = false; // a manual expand/collapse overrides auto_expand
+    this._lastAbnormalMs = 0; // auto_expand collapse hysteresis anchor
   }
 
   setConfig(config) {
@@ -368,7 +369,13 @@ class AirQualityCard extends HTMLElement {
   // _updateStates runs right after and populates whichever view this picked.
   _maybeAutoExpand() {
     if (!this._isExpandable() || !this._config.auto_expand || this._userToggled) return;
-    const desired = this._getAbnormalMetrics().length > 0;
+    const abnormal = this._getAbnormalMetrics().length > 0;
+    if (abnormal) this._lastAbnormalMs = Date.now();
+    // Hysteresis: expand immediately, but only collapse after readings have
+    // stayed clean for 5 minutes — a sensor hovering at a tier boundary must
+    // not rebuild the card on every state update.
+    const desired = abnormal ||
+      (this._expanded && this._lastAbnormalMs > 0 && (Date.now() - this._lastAbnormalMs) < 300000);
     if (desired === this._expanded) return;
     this._expanded = desired;
     this._initialRender();
@@ -703,8 +710,8 @@ class AirQualityCard extends HTMLElement {
   _getRadonColor(bq)   { return this._getMetricColor('radon', bq); }
 
   _isVOCIndex() {
-    if (this._config.tvoc_unit && this._config.tvoc_unit !== 'auto') {
-      return this._config.tvoc_unit === 'index';
+    if (this._config.tvoc_unit && String(this._config.tvoc_unit).toLowerCase() !== 'auto') {
+      return String(this._config.tvoc_unit).toLowerCase() === 'index';
     }
     // Auto-detect from entity unit_of_measurement
     if (this._hass && this._config.tvoc_entity) {
@@ -731,8 +738,8 @@ class AirQualityCard extends HTMLElement {
   // (AirGradient et al.) report a unitless NOx Index; HA exposes those with
   // no unit_of_measurement, so a missing/empty unit means index.
   _isNOxIndex() {
-    if (this._config.nox_unit && this._config.nox_unit !== 'auto') {
-      return this._config.nox_unit === 'index';
+    if (this._config.nox_unit && String(this._config.nox_unit).toLowerCase() !== 'auto') {
+      return String(this._config.nox_unit).toLowerCase() === 'index';
     }
     if (this._hass && this._config.nox_entity) {
       const uom = this._hass.states[this._config.nox_entity]?.attributes?.unit_of_measurement;
@@ -743,7 +750,11 @@ class AirQualityCard extends HTMLElement {
   }
 
   _getNOxUnit() {
-    return this._isNOxIndex() ? '' : 'ppb';
+    if (this._isNOxIndex()) return '';
+    // Show whatever the sensor actually reports (e.g. µg/m³). Note the
+    // default nox_thresholds assume ppb — µg/m³ users should override them.
+    const uom = this._hass?.states[this._config.nox_entity]?.attributes?.unit_of_measurement;
+    return uom || 'ppb';
   }
 
   _noxMetric() {
@@ -892,6 +903,9 @@ class AirQualityCard extends HTMLElement {
   _getAbnormalMetrics() {
     const CALM_COLORS = ['#4caf50', '#8bc34a', '#03a9f4'];
     const SEVERITY = { '#f44336': 4, '#ff9800': 3, '#ffc107': 2, '#2196f3': 1 };
+    // Life-safety metrics must never be outranked — or truncated out of the
+    // chip row — by a comfort metric that happens to share a tier color.
+    const PRIORITY_BOOST = { co: 10, radon: 5 };
     const labels = {
       co: 'CO', radon: 'Radon', co2: 'CO₂', pm25: 'PM2.5', pm10: 'PM10',
       pm1: 'PM1', pm03: 'PM0.3', pm4: 'PM4', hcho: 'HCHO', tvoc: 'tVOC',
@@ -900,6 +914,9 @@ class AirQualityCard extends HTMLElement {
     };
     const results = [];
     for (const metric of this._getMetricOrder()) {
+      // Pressure is informational (and its thresholds assume hPa) — ordinary
+      // barometric weather must never read as an air-quality alert.
+      if (metric === 'pressure') continue;
       let value, color, status;
       if (metric === 'radon') {
         if (!this._config.radon_entity && !this._config.radon_longterm_entity) continue;
@@ -930,7 +947,7 @@ class AirQualityCard extends HTMLElement {
         }
       }
       if (CALM_COLORS.includes(color)) continue;
-      results.push({ metric, label: labels[metric], color, status, severity: SEVERITY[color] || 0 });
+      results.push({ metric, label: labels[metric], color, status, severity: (SEVERITY[color] || 0) + (PRIORITY_BOOST[metric] || 0) });
     }
     return results.sort((a, b) => b.severity - a.severity);
   }
@@ -2034,7 +2051,9 @@ class AirQualityCard extends HTMLElement {
     const outdoorSuffix = (entityKey, value, unit) => {
       if (!this._config[entityKey]) return '';
       const val = this._getNumericState(this._config[entityKey]);
-      return ` <span class="outdoor-value">(out: ${unit === 'μg/m³' || unit === 'ppb' ? val.toFixed(1) : Math.round(val)} ${unit})</span>`;
+      // Unitless index metrics (empty unit) match the indoor 1-decimal display
+      const precise = unit === 'μg/m³' || unit === 'µg/m³' || unit === 'ppb' || unit === '';
+      return ` <span class="outdoor-value">(out: ${precise ? val.toFixed(1) : Math.round(val)}${unit ? ' ' + unit : ''})</span>`;
     };
 
     // Update CO
@@ -2905,6 +2924,9 @@ if (LitElement && !customElements.get('air-quality-card-editor')) {
 
     _valueChanged(ev) {
       const newConfig = { type: 'custom:air-quality-card', ...ev.detail.value };
+      // compact_alerts is injected into the form data as default-true; don't
+      // persist it to YAML unless the user actually turned it off.
+      if (newConfig.compact_alerts === true) delete newConfig.compact_alerts;
       this.dispatchEvent(new CustomEvent('config-changed', {
         detail: { config: newConfig },
         bubbles: true,

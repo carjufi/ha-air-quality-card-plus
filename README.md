@@ -109,7 +109,7 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 | `order` | array | No | default | Custom display order for metrics (see [Sensor Order](#sensor-order)) |
 | `display` | string | No | "full" | "full" (graphs and details), "compact" (status badge only), or "expandable" (compact, tap to expand to full) |
 | `compact_alerts` | boolean | No | `true` | In the compact/collapsed view, show small colored chips naming the sensors currently out of range |
-| `auto_expand` | boolean | No | `false` | With `display: expandable`, expand automatically while any sensor is out of range and collapse when all recover. A manual tap takes over until the page is reloaded |
+| `auto_expand` | boolean | No | `false` | With `display: expandable`, expand automatically while any sensor is out of range and collapse once readings have stayed normal for 5 minutes. A manual tap takes over until the card is re-created (page reload or dashboard edit) |
 | `tap_action` | action | No | - | Standard HA action object (e.g., `{ action: navigate, navigation_path: /air-quality }`). Active in compact mode |
 | `hold_action` | action | No | - | Same as `tap_action` but fired after holding for ~500 ms |
 | `double_tap_action` | action | No | - | Same as `tap_action` but fired on double-tap |
@@ -192,7 +192,7 @@ For per-recommendation routing (different action depending on whether it's a pur
 
 For overview dashboards where you want a small "go to the air quality page" indicator, use `display: compact`. Renders just the title and the overall status badge, with optional [HA tap actions](https://www.home-assistant.io/dashboards/actions/).
 
-When any sensor reads outside its normal range, small colored **alert chips** appear next to the badge naming the offenders (most severe first, capped at 4 plus a `+N` overflow pill) — so a yellow badge tells you *what* is off without expanding. Set `compact_alerts: false` to turn the chips off.
+When any sensor reads outside its normal range, small colored **alert chips** appear next to the badge naming the offenders (most severe first — CO and radon always lead — capped at 4 plus a `+N` overflow pill) — so a yellow badge tells you *what* is off without expanding. Set `compact_alerts: false` to turn the chips off. Atmospheric pressure never produces a chip or triggers auto-expand: it's informational, not an air-quality hazard.
 
 ```yaml
 type: custom:air-quality-card
@@ -224,7 +224,7 @@ display: expandable
 
 In expandable mode the tap gesture is reserved for expand/collapse, so `tap_action` is ignored.
 
-Add `auto_expand: true` to let the card manage itself: it expands automatically while any sensor reads out of range and collapses once everything returns to normal. A manual tap takes over for the session (the card stops auto-toggling until the page is reloaded), so the automation never fights you.
+Add `auto_expand: true` to let the card manage itself: it expands automatically while any sensor reads out of range and collapses once readings have stayed normal for 5 minutes (the delay prevents flapping when a sensor hovers at a threshold). A manual tap takes over (the card stops auto-toggling until it is re-created, e.g. a page reload or dashboard edit), so the automation never fights you.
 
 ```yaml
 type: custom:air-quality-card
@@ -404,7 +404,7 @@ NOx Index (Sensirion) — bands follow Sensirion's integration guidance and AirG
 | Elevated | 150-300 | Orange | Significant NOx event — ventilate |
 | Poor | > 300 | Red | Major NOx event |
 
-Absolute (ppb) — anchored to WHO 2021 / EPA NO₂ standards (applied to NOx conservatively):
+Absolute (ppb) — anchored to WHO 2021 / EPA NO₂ standards (applied to NOx conservatively). If your sensor reports µg/m³ instead of ppb, the card displays that unit but the default thresholds still assume ppb — set `nox_thresholds` in your sensor's unit (for NO₂, 1 ppb ≈ 1.88 µg/m³):
 | Level | Range | Color | Meaning |
 |-------|-------|-------|---------|
 | Excellent | < 20 ppb | Green | ~WHO interim target 1 (40 µg/m³) |

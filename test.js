@@ -962,10 +962,14 @@ assert(aeCard._expanded === true, 'out-of-range CO2 → auto-expanded');
 assert(aeRenders === 1, 'auto-expand re-rendered once');
 aeCard._maybeAutoExpand();
 assert(aeRenders === 1, 'no state change → no re-render');
-// Recovery → auto-collapse
+// Recovery inside the 5-minute hysteresis window → stays expanded (no flapping)
 aeCard._hass.states['sensor.co2'].state = '500';
 aeCard._maybeAutoExpand();
-assert(aeCard._expanded === false, 'recovered → auto-collapsed');
+assert(aeCard._expanded === true, 'recovered <5 min ago → stays expanded (hysteresis)');
+// Once readings have been clean past the window → auto-collapse
+aeCard._lastAbnormalMs = Date.now() - 301000;
+aeCard._maybeAutoExpand();
+assert(aeCard._expanded === false, 'clean for 5+ minutes → auto-collapsed');
 // A manual toggle takes over for the session
 aeCard._hass.states['sensor.co2'].state = '1600';
 aeCard._updateStates = () => {};
@@ -988,6 +992,53 @@ aeNoOpt._hass = { config: { unit_system: { temperature: '°F' } }, states: { 'se
 aeNoOpt._initialRender = () => { throw new Error('should not re-render'); };
 aeNoOpt._maybeAutoExpand();
 assert(aeNoOpt._expanded === false, 'expandable without auto_expand stays collapsed');
+
+// The hass setter is the production trigger for auto-expand — wire-test it
+const aeWire = new CardClass();
+aeWire.setConfig({ co2_entity: 'sensor.co2', display: 'expandable', auto_expand: true });
+let aeWireHistory = 0;
+aeWire._initialRender = () => {};
+aeWire._updateStates = () => {};
+aeWire._loadHistory = () => { aeWireHistory++; };
+aeWire._renderGraphs = () => {};
+aeWire.hass = { config: { unit_system: { temperature: '°F' } }, states: { 'sensor.co2': { state: '500' } } };
+assert(aeWire._expanded === false, 'hass setter: healthy reading stays collapsed');
+assert(aeWireHistory === 0, 'collapsed expandable skips the history fetch');
+aeWire.hass = { config: { unit_system: { temperature: '°F' } }, states: { 'sensor.co2': { state: '1600' } } };
+assert(aeWire._expanded === true, 'hass setter wires _maybeAutoExpand (unhealthy → expanded)');
+assert(aeWireHistory === 1, 'auto-expand lazily loads history');
+
+section('Alert chip priorities and exclusions (#40)');
+
+// Pressure is informational — never a chip, never an auto-expand trigger
+const presCard = new CardClass();
+presCard.setConfig({ pressure_entity: 'sensor.press' });
+presCard._hass = { config: { unit_system: { temperature: '°F' } }, states: { 'sensor.press': { state: '980' } } };
+assert(presCard._getAbnormalMetrics().length === 0, 'informational pressure never produces a chip');
+
+// Life-safety CO leads the chip row even when other metrics have redder tiers
+const coChipCard = new CardClass();
+coChipCard.setConfig({ co_entity: 'sensor.co', co2_entity: 'sensor.co2', humidity_entity: 'sensor.hum' });
+coChipCard._hass = { config: { unit_system: { temperature: '°F' } }, states: {
+  'sensor.co': { state: '12' },    // yellow warning tier
+  'sensor.co2': { state: '1600' }, // red
+  'sensor.hum': { state: '25' }    // orange Too Dry
+} };
+const coChips = coChipCard._getAbnormalMetrics();
+assert(coChips.length === 3, 'CO + CO2 + humidity all flagged');
+assert(coChips[0].metric === 'co', 'life-safety CO sorts first even at a lower tier color');
+
+// Index-mode tVOC and NOx route through their metric-key special cases
+const idxChipCard = new CardClass();
+idxChipCard.setConfig({ tvoc_entity: 'sensor.tvoc', nox_entity: 'sensor.nox', tvoc_unit: 'index', nox_unit: 'index' });
+idxChipCard._hass = { config: { unit_system: { temperature: '°F' } }, states: {
+  'sensor.tvoc': { state: '300' },
+  'sensor.nox': { state: '200' }
+} };
+const idxChips = idxChipCard._getAbnormalMetrics();
+assert(idxChips.length === 2, 'index-mode tVOC and NOx both flagged');
+assert(idxChips.some(c => c.metric === 'tvoc' && c.color === '#ff9800'), 'tVOC index 300 → orange via _tvocMetric');
+assert(idxChips.some(c => c.metric === 'nox' && c.color === '#ff9800'), 'NOx index 200 → orange via _noxMetric');
 
 // ============================================================
 // NOX INDEX + OUTDOOR NOX (issue #41)
@@ -1020,6 +1071,13 @@ assert(noxCard._isNOxIndex() === true, 'nox_unit: index forces index mode');
 noxCard.setConfig({ nox_entity: 'sensor.nox', nox_unit: 'ppb' });
 noxCard._hass.states['sensor.nox'].attributes = {};
 assert(noxCard._isNOxIndex() === false, 'nox_unit: ppb forces absolute despite missing unit');
+// nox_unit matching is case-insensitive
+noxCard.setConfig({ nox_entity: 'sensor.nox', nox_unit: 'Index' });
+assert(noxCard._isNOxIndex() === true, 'nox_unit value is case-insensitive');
+// µg/m³ sensors keep their real display unit (default thresholds still assume ppb)
+noxCard.setConfig({ nox_entity: 'sensor.nox' });
+noxCard._hass.states['sensor.nox'].attributes = { unit_of_measurement: 'µg/m³' };
+assert(noxCard._getNOxUnit() === 'µg/m³', 'µg/m³ sensor displays µg/m³, not ppb');
 
 section('NOx Index colors (Sensirion/AirGradient bands)');
 
@@ -1051,6 +1109,8 @@ const noxCustom = new CardClass();
 noxCustom.setConfig({ nox_entity: 'sensor.nox', nox_unit: 'index', nox_thresholds: [10, 30, 60, 100] });
 noxCustom._hass = { config: { unit_system: { temperature: '°F' } }, states: {} };
 assert(noxCustom._getNOxColor(50) === '#ffc107', 'custom nox_thresholds respected in index mode');
+noxCustom.setConfig({ nox_entity: 'sensor.nox', nox_unit: 'ppb', nox_thresholds: [10, 30, 60, 100] });
+assert(noxCustom._getNOxColor(50) === '#ffc107', 'custom nox_thresholds respected in ppb mode');
 
 section('Outdoor NOx (#41)');
 
@@ -1064,6 +1124,21 @@ const pairNox = new CardClass();
 pairNox.setConfig({ nox_entity: 'sensor.nox', outdoor_nox_entity: 'sensor.out_nox' });
 assert(pairNox._outdoorOnly === false, 'indoor+outdoor NOx → normal mode');
 assert(pairNox._config.outdoor_nox_entity === 'sensor.out_nox', 'outdoor NOx kept as overlay');
+
+// _loadHistory actually fetches the outdoor NOx entity (calls to callApi are
+// issued synchronously before _loadHistory's first await)
+const histNox = new CardClass();
+histNox.setConfig({ nox_entity: 'sensor.nox', outdoor_nox_entity: 'sensor.out_nox' });
+const histCalls = [];
+histNox._hass = {
+  config: { unit_system: { temperature: '°F' } },
+  states: { 'sensor.nox': { state: '1', attributes: {} }, 'sensor.out_nox': { state: '2', attributes: {} } },
+  callApi: async (method, uri) => { histCalls.push(uri); return [[{ last_changed: '2026-06-11T00:00:00Z', state: '5' }]]; }
+};
+histNox._renderGraphs = () => {};
+histNox._loadHistory();
+assert(histCalls.some(u => u.includes('sensor.nox')), '_loadHistory fetches the indoor NOx entity');
+assert(histCalls.some(u => u.includes('sensor.out_nox')), '_loadHistory fetches the outdoor NOx entity');
 
 section('Compact mode — tap actions');
 
