@@ -93,7 +93,9 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 | `radon_entity` | string | No* | - | Radon sensor entity ID (supports pCi/L and Bq/m3) |
 | `radon_longterm_entity` | string | No | - | Radon long-term average sensor (shown as dashed overlay on radon graph) |
 | `hcho_entity` | string | No* | - | Formaldehyde (HCHO) sensor entity ID |
-| `tvoc_entity` | string | No* | - | Volatile organic compounds (tVOC) sensor entity ID |
+| `tvoc_entity` | string | No* | - | Volatile organic compounds (tVOC) sensor entity ID (absolute ppb or Sensirion VOC Index — auto-detected, see `tvoc_unit`) |
+| `nox_entity` | string | No* | - | NOx sensor entity ID (absolute ppb or Sensirion NOx Index — auto-detected, see `nox_unit`) |
+| `pm4_entity` | string | No* | - | PM4 sensor entity ID |
 | `humidity_entity` | string | No* | - | Humidity sensor entity ID |
 | `temperature_entity` | string | No* | - | Temperature sensor entity ID |
 | `pressure_entity` | string | No* | - | Atmospheric pressure sensor entity ID (e.g. Airthings) |
@@ -101,9 +103,13 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 | `hours_to_show` | number | No | 24 | Hours of history to display (1-168) |
 | `temperature_unit` | string | No | "auto" | Temperature unit: "auto" (detect from HA), "F" (Fahrenheit), or "C" (Celsius) |
 | `radon_unit` | string | No | "auto" | Radon unit: "auto" (detect from sensor), "pCi/L" (US), or "Bq/m3" (International) |
+| `tvoc_unit` | string | No | "auto" | tVOC measurement type: "auto" (detect from sensor), "ppb" (absolute), or "index" (Sensirion VOC Index) |
+| `nox_unit` | string | No | "auto" | NOx measurement type: "auto" (detect from sensor), "ppb" (absolute), or "index" (Sensirion NOx Index) |
 | `show_min_max` | boolean | No | `false` | Overlay the min/max values of the displayed time window directly at the data points on the graph |
 | `order` | array | No | default | Custom display order for metrics (see [Sensor Order](#sensor-order)) |
 | `display` | string | No | "full" | "full" (graphs and details), "compact" (status badge only), or "expandable" (compact, tap to expand to full) |
+| `compact_alerts` | boolean | No | `true` | In the compact/collapsed view, show small colored chips naming the sensors currently out of range |
+| `auto_expand` | boolean | No | `false` | With `display: expandable`, expand automatically while any sensor is out of range and collapse when all recover. A manual tap takes over until the page is reloaded |
 | `tap_action` | action | No | - | Standard HA action object (e.g., `{ action: navigate, navigation_path: /air-quality }`). Active in compact mode |
 | `hold_action` | action | No | - | Same as `tap_action` but fired after holding for ~500 ms |
 | `double_tap_action` | action | No | - | Same as `tap_action` but fired on double-tap |
@@ -117,13 +123,13 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 | `pm4_thresholds` | array | No | `[10, 25, 37.5, 50]` | Custom PM4 thresholds |
 | `hcho_thresholds` | array | No | `[20, 50, 100, 200]` | Custom HCHO thresholds (ppb) |
 | `tvoc_thresholds` | array | No | mode-dependent | Custom tVOC thresholds (units depend on `tvoc_unit`) |
-| `nox_thresholds` | array | No | `[20, 50, 150, 250]` | Custom NOx thresholds (ppb) |
+| `nox_thresholds` | array | No | mode-dependent | Custom NOx thresholds (units depend on `nox_unit`; defaults `[20, 53, 100, 360]` ppb / `[5, 20, 150, 300]` index) |
 | `radon_thresholds` | array | No | `[48, 100, 148, 300]` | Custom radon thresholds (Bq/m³ — even if you display in pCi/L) |
 | `humidity_thresholds` | array | No | `[30, 40, 50, 60]` | Custom humidity thresholds (%) |
 | `pressure_thresholds` | array | No | `[990, 1005, 1025, 1040]` | Custom atmospheric pressure thresholds (hPa by default; override for inHg/mmHg) |
 | `outdoor_pressure_entity` | string | No | - | Outdoor atmospheric pressure sensor for comparison |
 | `temperature_thresholds` | array | No | unit-dependent | Custom temperature thresholds (in the unit your sensor reports) |
-| `language` | string | No | "auto" | UI language. "auto" (use Home Assistant's), "en", "es", "fr", or "de" |
+| `language` | string | No | "auto" | UI language. "auto" (use Home Assistant's), "en", "es", "fr", "de", or "pt" |
 | `outdoor_co2_entity` | string | No | - | Outdoor CO2 sensor for comparison |
 | `outdoor_pm25_entity` | string | No | - | Outdoor PM2.5 sensor for comparison |
 | `outdoor_pm1_entity` | string | No | - | Outdoor PM1 sensor for comparison |
@@ -132,6 +138,7 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 | `outdoor_co_entity` | string | No | - | Outdoor CO sensor for comparison |
 | `outdoor_hcho_entity` | string | No | - | Outdoor HCHO sensor for comparison |
 | `outdoor_tvoc_entity` | string | No | - | Outdoor tVOC sensor for comparison |
+| `outdoor_nox_entity` | string | No | - | Outdoor NOx sensor for comparison |
 | `outdoor_humidity_entity` | string | No | - | Outdoor humidity sensor for comparison |
 | `outdoor_temperature_entity` | string | No | - | Outdoor temperature sensor for comparison |
 
@@ -147,7 +154,7 @@ If you leave it unset, the card computes the status itself from your configured 
 
 Customize which sensors come first on the card. In the visual editor, use the multi-select to tick metrics in the order you want them shown. In YAML, provide a list of metric names. Any metric you don't list keeps its default position and stays visible.
 
-Valid metric names: `co`, `radon`, `co2`, `pm25`, `pm10`, `pm1`, `pm03`, `pm4`, `hcho`, `tvoc`, `nox`, `humidity`, `temperature`.
+Valid metric names: `co`, `radon`, `co2`, `pm25`, `pm10`, `pm1`, `pm03`, `pm4`, `hcho`, `tvoc`, `nox`, `humidity`, `temperature`, `pressure`.
 
 ```yaml
 type: custom:air-quality-card
@@ -185,6 +192,8 @@ For per-recommendation routing (different action depending on whether it's a pur
 
 For overview dashboards where you want a small "go to the air quality page" indicator, use `display: compact`. Renders just the title and the overall status badge, with optional [HA tap actions](https://www.home-assistant.io/dashboards/actions/).
 
+When any sensor reads outside its normal range, small colored **alert chips** appear next to the badge naming the offenders (most severe first, capped at 4 plus a `+N` overflow pill) — so a yellow badge tells you *what* is off without expanding. Set `compact_alerts: false` to turn the chips off.
+
 ```yaml
 type: custom:air-quality-card
 name: Air Quality
@@ -215,6 +224,16 @@ display: expandable
 
 In expandable mode the tap gesture is reserved for expand/collapse, so `tap_action` is ignored.
 
+Add `auto_expand: true` to let the card manage itself: it expands automatically while any sensor reads out of range and collapses once everything returns to normal. A manual tap takes over for the session (the card stops auto-toggling until the page is reloaded), so the automation never fights you.
+
+```yaml
+type: custom:air-quality-card
+co2_entity: sensor.air_quality_co2
+pm25_entity: sensor.air_quality_pm25
+display: expandable
+auto_expand: true
+```
+
 ### Custom Thresholds
 
 The default thresholds follow WHO 2021 / ASHRAE / EPA guidelines, but you can override any of them. Provide an array of **4 ascending numbers** — these become the 5-tier boundaries (Excellent / Good / Moderate / Elevated / Poor for most metrics; see [Health Thresholds](#health-thresholds) for the labels per metric).
@@ -236,9 +255,9 @@ Notes:
 
 ### Language
 
-The card auto-detects your Home Assistant frontend language and translates the status badge, recommendations, recommendation subtitles, radon advisory titles, and editor labels. Translations included so far: **English, Spanish, French, German** (Spanish/French/German contributed by [@b0rv3g4r4](https://github.com/b0rv3g4r4) on PR #11).
+The card auto-detects your Home Assistant frontend language and translates the status badge, recommendations, recommendation subtitles, radon advisory titles, and editor labels. Translations included so far: **English, Spanish, French, German, Portuguese** (Spanish/French/German contributed by [@b0rv3g4r4](https://github.com/b0rv3g4r4) on PR #11, Portuguese by [@mzspicoli](https://github.com/mzspicoli) on PR #33).
 
-If auto-detection picks the wrong language, force one explicitly with `language: es` (or `en` / `fr` / `de`).
+If auto-detection picks the wrong language, force one explicitly with `language: es` (or `en` / `fr` / `de` / `pt`).
 
 To contribute a new language: open a PR adding a block to the `TRANSLATIONS` const in `air-quality-card.js`. Copy the `en:` block, rename the key (e.g. `it:` for Italian), and translate the values — keep the structure identical. English is the fallback for any missing key.
 
@@ -353,6 +372,9 @@ Based on WHO 2021 Air Quality Guidelines:
 | Poor | > 200 ppb | Red | Take action |
 
 ### tVOC (Volatile Organic Compounds)
+The card auto-detects whether your sensor reports absolute concentration (ppb) or the unitless Sensirion VOC Index (0-500, centered at 100); force a mode with `tvoc_unit` if needed.
+
+Absolute (ppb):
 | Level | Range | Color | Meaning |
 |-------|-------|-------|---------|
 | Excellent | < 100 ppb | Green | Clean air |
@@ -360,6 +382,36 @@ Based on WHO 2021 Air Quality Guidelines:
 | Moderate | 300-500 ppb | Yellow | Consider ventilation |
 | Elevated | 500-1000 ppb | Orange | Ventilation needed |
 | Poor | > 1000 ppb | Red | Take action |
+
+VOC Index (Sensirion):
+| Level | Range | Color | Meaning |
+|-------|-------|-------|---------|
+| Excellent | < 100 | Green | Better than your home's average |
+| Good | 100-150 | Light Green | Around average |
+| Moderate | 150-250 | Yellow | Consider ventilation |
+| Elevated | 250-400 | Orange | Ventilation needed |
+| Poor | > 400 | Red | Take action |
+
+### NOx (Nitrogen Oxides)
+Like tVOC, NOx comes in two flavors and the card auto-detects which one your sensor reports (force with `nox_unit`). Sensirion SGP41-based sensors (AirGradient ONE / Open Air, ESPHome `sgp4x`) report the unitless **NOx Index** — note its clean-air baseline is **1**, not 100 like the VOC Index.
+
+NOx Index (Sensirion) — bands follow Sensirion's integration guidance and AirGradient's dashboard:
+| Level | Range | Color | Meaning |
+|-------|-------|-------|---------|
+| Excellent | < 5 | Green | Clean-air baseline (1) |
+| Good | 5-20 | Light Green | Minor activity |
+| Moderate | 20-150 | Yellow | NOx event — Sensirion's "trigger an air purifier" level |
+| Elevated | 150-300 | Orange | Significant NOx event — ventilate |
+| Poor | > 300 | Red | Major NOx event |
+
+Absolute (ppb) — anchored to WHO 2021 / EPA NO₂ standards (applied to NOx conservatively):
+| Level | Range | Color | Meaning |
+|-------|-------|-------|---------|
+| Excellent | < 20 ppb | Green | ~WHO interim target 1 (40 µg/m³) |
+| Good | 20-53 ppb | Light Green | Under the EPA annual NAAQS (53 ppb) |
+| Moderate | 53-100 ppb | Yellow | Under the EPA 1-hour NAAQS (100 ppb) |
+| Elevated | 100-360 ppb | Orange | EPA AQI Unhealthy-for-Sensitive-Groups range |
+| Poor | > 360 ppb | Red | EPA AQI Unhealthy and above |
 
 ### Humidity
 | Level | Range | Color | Meaning |
@@ -382,7 +434,7 @@ Informational, not a health hazard — a wide green band keeps typical weather c
 
 ## Supported Devices
 
-This card works with any sensor that provides entities for CO, Radon, CO2, PM2.5, PM10, PM1, PM0.3, HCHO, tVOC, humidity, temperature, or atmospheric pressure. Use any combination -- even a single sensor works. Tested with:
+This card works with any sensor that provides entities for CO, Radon, CO2, PM2.5, PM10, PM4, PM1, PM0.3, HCHO, tVOC, NOx, humidity, temperature, or atmospheric pressure. Use any combination -- even a single sensor works. Tested with:
 
 - IKEA VINDSTYRKA / ALPSTUGA (via Matter)
 - Aqara TVOC Air Quality Monitor
