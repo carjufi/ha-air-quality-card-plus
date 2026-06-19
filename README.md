@@ -1,25 +1,52 @@
 # Air Quality Card Plus
 
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-yellow?style=flat&logo=buy-me-a-coffee)](https://buymeacoffee.com/kadenthomp36)
-
 A custom Home Assistant Lovelace card for indoor and outdoor air-quality dashboards, with compact gradient graphs and health-oriented status thresholds.
 
 This is a personalised extension of [KadenThomp36/air-quality-card](https://github.com/KadenThomp36/air-quality-card). It preserves the upstream MIT licence and attribution while adding first-class support for NO₂, O₃, SO₂, WAQI-style dominant pollutant text, and HCHO sensors that report in ppm.
 
-![Air Quality Card Preview](https://raw.githubusercontent.com/KadenThomp36/air-quality-card/main/images/preview.png)
+![Air Quality Card Preview](images/preview.png)
 
-## Table of Contents
+## Index
 
 - [Features](#features)
 - [Installation](#installation)
+  - [HACS](#hacs)
+  - [Manual Installation](#manual-installation)
 - [Configuration](#configuration)
+  - [Using the Visual Editor](#using-the-visual-editor)
+  - [YAML Configuration](#yaml-configuration)
+  - [Barcelona Eixample (WAQI) example](#barcelona-eixample-waqi-example)
+  - [Indoor HCHO in ppm example](#indoor-hcho-in-ppm-example)
+  - [Configuration Options](#configuration-options)
+  - [Air Quality Index entity](#air-quality-index-entity)
+  - [Sensor Order](#sensor-order)
+  - [Recommendation Action Button](#recommendation-action-button)
+  - [Compact Display Mode](#compact-display-mode)
+  - [Expandable Display Mode](#expandable-display-mode)
+  - [Custom Thresholds](#custom-thresholds)
+  - [Language](#language)
+  - [Outdoor Sensors](#outdoor-sensors)
+  - [Outdoor-Only Mode](#outdoor-only-mode)
 - [Built-in Recommendations](#built-in-recommendations)
 - [Health Thresholds](#health-thresholds)
+  - [CO (Carbon Monoxide)](#co-carbon-monoxide)
+  - [Radon](#radon)
+  - [CO2 (Carbon Dioxide)](#co2-carbon-dioxide)
+  - [PM2.5 (Fine Particulate Matter)](#pm25-fine-particulate-matter)
+  - [PM10 (Coarse Particulate Matter)](#pm10-coarse-particulate-matter)
+  - [PM1 (Ultrafine Particulate Matter)](#pm1-ultrafine-particulate-matter)
+  - [PM0.3 (Particle Count)](#pm03-particle-count)
+  - [HCHO (Formaldehyde)](#hcho-formaldehyde)
+  - [tVOC (Volatile Organic Compounds)](#tvoc-volatile-organic-compounds)
+  - [NOx (Nitrogen Oxides)](#nox-nitrogen-oxides)
+  - [NO₂, O₃, and SO₂](#no₂-o₃-and-so₂)
+  - [Humidity](#humidity)
+  - [Atmospheric Pressure](#atmospheric-pressure)
 - [Supported Devices](#supported-devices)
 - [Development](#development)
-- [Other Cards](#other-cards)
-- [Star History](#star-history)
-- [Support](#support)
+- [Contributing](#contributing)
+- [License](#license)
+- [Credits](#credits)
 
 ## Features
 
@@ -552,22 +579,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
-
-## Other Cards
-
-If you like this card, check out my other Home Assistant cards:
-
-- [Garage Card](https://github.com/KadenThomp36/garage-card) — A top-down visual garage card with door state, car presence, and light control
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=KadenThomp36/air-quality-card&type=Date)](https://star-history.com/#KadenThomp36/air-quality-card&Date)
-
-## Support
-
-If you find this card useful, consider buying me a coffee!
-
-[![Buy Me a Coffee](https://raw.githubusercontent.com/KadenThomp36/air-quality-card/main/images/bmc-button.png)](https://buymeacoffee.com/kadenthomp36)
 
 ## Credits
 
