@@ -1,12 +1,12 @@
 /**
- * Air Quality Card Plus v2.12.4
+ * Air Quality Card Plus v2.12.5
  * A custom Home Assistant card for air quality visualization
  * Thresholds based on WHO 2021 guidelines and ASHRAE standards
  *
  * https://github.com/KadenThomp36/air-quality-card
  */
 
-const CARD_VERSION = '2.12.4';
+const CARD_VERSION = '2.12.5';
 
 // Shared color palettes for the 5-tier color scale used across metrics.
 const SCALE_AIRQUALITY = ['#4caf50', '#8bc34a', '#ffc107', '#ff9800', '#f44336']; // green → red
@@ -1513,12 +1513,12 @@ class AirQualityCard extends HTMLElement {
         }
 
         .compact-charts .graphs {
-          gap: 6px;
+          gap: 4px;
         }
 
         .compact-charts .graph-container {
-          padding: 7px 10px;
-          border-radius: 9px;
+          padding: 5px 10px;
+          border-radius: 8px;
         }
 
         .graph-header {
@@ -1529,7 +1529,7 @@ class AirQualityCard extends HTMLElement {
         }
 
         .compact-charts .graph-header {
-          margin-bottom: 3px;
+          margin-bottom: 1px;
         }
 
         .graph-label {
@@ -1633,7 +1633,7 @@ class AirQualityCard extends HTMLElement {
         }
 
         .compact-charts .graph {
-          height: 34px;
+          height: 26px;
         }
 
         .graph svg {
@@ -1720,8 +1720,8 @@ class AirQualityCard extends HTMLElement {
         }
 
         .compact-charts .graph-time-axis {
-          margin-top: 2px;
-          font-size: 0.55em;
+          margin-top: 1px;
+          font-size: 0.53em;
         }
 
         .graph-legend {
@@ -1753,8 +1753,8 @@ class AirQualityCard extends HTMLElement {
         }
 
         .compact-charts .graph-legend {
-          margin-top: 4px;
-          font-size: 0.6em;
+          margin-top: 3px;
+          font-size: 0.58em;
         }
 
         .no-data {

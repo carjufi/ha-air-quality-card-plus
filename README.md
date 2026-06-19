@@ -81,7 +81,7 @@ New cards should use `type: custom:air-quality-card-plus`. The older `type: cust
 2. Copy it to `/config/www/air-quality-card-plus/air-quality-card.js`
 3. Add the resource in Home Assistant:
    - Go to Settings → Dashboards → Resources
-   - Add `/local/air-quality-card-plus/air-quality-card.js?v=2.12.4` as a JavaScript Module
+   - Add `/local/air-quality-card-plus/air-quality-card.js?v=2.12.5` as a JavaScript Module
 
 ## Configuration
 
@@ -335,7 +335,7 @@ Compact mode:
 
 ### Compact Chart Height
 
-If the full card feels too tall but you still want every graph visible, set `compact_charts: true`. This keeps the normal full-card layout and interactions, but reduces chart block padding, chart height, and time-axis spacing.
+If the full card feels too tall but you still want every graph visible, set `compact_charts: true`. This keeps the normal full-card layout and interactions, but reduces chart block padding, graph height to 26 px, and time-axis spacing.
 
 ```yaml
 type: custom:air-quality-card-plus
