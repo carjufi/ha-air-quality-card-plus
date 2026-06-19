@@ -75,7 +75,7 @@ After adding this fork as a custom HACS repository, install it as a Lovelace plu
 2. Copy it to `/config/www/air-quality-card-plus/air-quality-card.js`
 3. Add the resource in Home Assistant:
    - Go to Settings → Dashboards → Resources
-   - Add `/local/air-quality-card-plus/air-quality-card.js?v=2.12.0` as a JavaScript Module
+   - Add `/local/air-quality-card-plus/air-quality-card.js?v=2.12.1` as a JavaScript Module
 
 ## Configuration
 

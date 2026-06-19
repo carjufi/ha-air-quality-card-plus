@@ -1,5 +1,5 @@
 /**
- * Air Quality Card Plus v2.12.0 — Unit Tests
+ * Air Quality Card Plus v2.12.1 — Unit Tests
  * Run with: node test.js
  *
  * Tests color functions, recommendation waterfall, config validation,
