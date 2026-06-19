@@ -1,5 +1,5 @@
 /**
- * Air Quality Card v2.6.0 — Unit Tests
+ * Air Quality Card Plus v2.12.0 — Unit Tests
  * Run with: node test.js
  *
  * Tests color functions, recommendation waterfall, config validation,
@@ -141,6 +141,42 @@ assert(card._getHCHOColor(30) === '#8bc34a', 'HCHO 30 = light green');
 assert(card._getHCHOColor(80) === '#ffc107', 'HCHO 80 = yellow');
 assert(card._getHCHOColor(150) === '#ff9800', 'HCHO 150 = orange');
 assert(card._getHCHOColor(300) === '#f44336', 'HCHO 300 = red');
+
+section('HCHO ppm / ppb handling');
+const hchoPpm = new CardClass();
+hchoPpm.setConfig({ hcho_entity: 'sensor.hcho', hcho_unit: 'ppm' });
+hchoPpm._hass = { config: { unit_system: { temperature: '°F' } }, states: {
+  'sensor.hcho': { state: '0.04', attributes: { unit_of_measurement: 'ppm' } }
+} };
+assert(hchoPpm._getHCHOUnit() === 'ppm', 'explicit HCHO ppm unit is retained');
+assert(hchoPpm._getHCHOPpb(0.04) === 40, 'HCHO 0.04 ppm converts to 40 ppb');
+assert(hchoPpm._getHCHOColor(0.04) === '#8bc34a', 'HCHO 0.04 ppm uses 40 ppb thresholds');
+assert(hchoPpm._getHCHOStatus(0.04) === 'Good', 'HCHO 0.04 ppm status uses ppb thresholds');
+assert(hchoPpm._formatHCHO(0.04) === '0.04', 'HCHO ppm retains two decimal places');
+assert(JSON.stringify(hchoPpm._metricThresholds('hcho')) === JSON.stringify([20, 50, 100, 200]), 'default HCHO ppm thresholds normalise to ppb');
+
+const hchoAuto = new CardClass();
+hchoAuto.setConfig({ hcho_entity: 'sensor.hcho' });
+hchoAuto._hass = { config: { unit_system: { temperature: '°F' } }, states: {
+  'sensor.hcho': { state: '0.04', attributes: { unit_of_measurement: 'ppm' } }
+} };
+assert(hchoAuto._getHCHOUnit() === 'ppm', 'HCHO auto detects ppm from entity unit');
+
+const hchoCustomPpm = new CardClass();
+hchoCustomPpm.setConfig({ hcho_entity: 'sensor.hcho', hcho_unit: 'ppm', hcho_thresholds: [0.01, 0.03, 0.05, 0.1] });
+assert(hchoCustomPpm._getHCHOColor(0.04) === '#ffc107', 'custom HCHO ppm thresholds convert before color lookup');
+
+section('NO₂, O₃, and SO₂ thresholds');
+assert(card._getMetricColor('no2', 5) === '#4caf50', 'NO₂ 5 = green');
+assert(card._getMetricColor('no2', 30) === '#ffc107', 'NO₂ 30 = yellow');
+assert(card._getMetricStatus('no2', 30) === 'Moderate', 'NO₂ status is independent');
+assert(card._getMetricColor('o3', 110) === '#ffc107', 'O₃ 110 = yellow');
+assert(card._getMetricStatus('o3', 110) === 'Moderate', 'O₃ status follows O₃ thresholds');
+assert(card._getMetricColor('so2', 90) === '#ff9800', 'SO₂ 90 = orange');
+assert(card._getMetricStatus('so2', 90) === 'Elevated', 'SO₂ status follows SO₂ thresholds');
+assert(card._formatDominantPollutant('pm25') === 'PM2.5', 'dominant pm25 has a friendly label');
+assert(card._formatDominantPollutant('no2') === 'NO₂', 'dominant no2 has a friendly label');
+assert(card._formatDominantPollutant('so2') === 'SO₂', 'dominant so2 has a friendly label');
 
 section('tVOC Color');
 assert(card._getTVOCColor(50) === '#4caf50', 'tVOC 50 = green');
@@ -331,7 +367,8 @@ assert(threw, 'Empty config throws');
 // Should accept any single sensor
 const singleSensorConfigs = [
   'co2_entity', 'pm25_entity', 'pm1_entity', 'pm10_entity', 'pm03_entity',
-  'hcho_entity', 'tvoc_entity', 'co_entity', 'radon_entity', 'humidity_entity', 'temperature_entity'
+  'no2_entity', 'o3_entity', 'so2_entity', 'hcho_entity', 'tvoc_entity', 'co_entity', 'radon_entity',
+  'humidity_entity', 'temperature_entity', 'dominant_pollutant_entity'
 ];
 for (const key of singleSensorConfigs) {
   let ok = true;
@@ -345,6 +382,22 @@ assert(card._config.name === 'Air Quality', 'Default name');
 assert(card._config.hours_to_show === 24, 'Default hours_to_show');
 assert(card._config.temperature_unit === 'auto', 'Default temperature_unit is auto');
 assert(card._config.radon_unit === 'auto', 'Default radon_unit is auto');
+assert(card._config.hcho_unit === 'auto', 'Default HCHO unit is auto');
+
+const barcelonaCard = new CardClass();
+barcelonaCard.setConfig({
+  air_quality_entity: 'sensor.barcelona_aqi',
+  dominant_pollutant_entity: 'sensor.barcelona_dominant_pollutant',
+  pm25_entity: 'sensor.barcelona_pm25', pm10_entity: 'sensor.barcelona_pm10',
+  no2_entity: 'sensor.barcelona_no2', o3_entity: 'sensor.barcelona_o3', so2_entity: 'sensor.barcelona_so2',
+  co_entity: 'sensor.barcelona_co', humidity_entity: 'sensor.barcelona_humidity',
+  temperature_entity: 'sensor.barcelona_temperature', pressure_entity: 'sensor.barcelona_pressure',
+  order: ['pm25', 'pm10', 'no2', 'o3', 'so2', 'co', 'humidity', 'temperature', 'pressure']
+});
+assert(barcelonaCard._config.no2_entity === 'sensor.barcelona_no2', 'Barcelona NO₂ entity is retained');
+assert(barcelonaCard._config.o3_entity === 'sensor.barcelona_o3', 'Barcelona O₃ entity is retained');
+assert(barcelonaCard._config.so2_entity === 'sensor.barcelona_so2', 'Barcelona SO₂ entity is retained');
+assert(!barcelonaCard._getMetricOrder().includes('dominant_pollutant'), 'dominant pollutant remains outside graph order');
 
 // ============================================================
 // OVERALL STATUS TESTS
@@ -782,7 +835,7 @@ defaultOrderCard.setConfig({ co2_entity: 'sensor.co2' });
 const defaultOrder = defaultOrderCard._getMetricOrder();
 assert(defaultOrder[0] === 'co', 'default order: co first');
 assert(defaultOrder[defaultOrder.length - 1] === 'pressure', 'default order: pressure last');
-assert(defaultOrder.length === 14, 'default order: all 14 metrics');
+assert(defaultOrder.length === 17, 'default order: all 17 metrics');
 
 section('Metric order — user override');
 
@@ -799,7 +852,12 @@ assert(reordered[3] === 'pm10', 'user order: pm10 fourth');
 assert(reordered[4] === 'pm25', 'user order: pm25 fifth');
 // Unmentioned metrics get appended in default order — user never loses a sensor
 assert(reordered.includes('radon'), 'unmentioned metrics still present');
-assert(reordered.length === 14, 'user order: total still 14');
+assert(reordered.length === 17, 'user order: total still 17');
+
+const nitrogenOrderCard = new CardClass();
+nitrogenOrderCard.setConfig({ nox_entity: 'sensor.nox', no2_entity: 'sensor.no2', order: ['no2', 'nox'] });
+const nitrogenOrder = nitrogenOrderCard._getMetricOrder();
+assert(nitrogenOrder[0] === 'no2' && nitrogenOrder[1] === 'nox', 'NO₂ and legacy NOx are independent orderable metrics');
 
 section('Metric order — invalid input');
 
@@ -1390,6 +1448,14 @@ assert(card.getCardSize() === 14, 'All 11 sensors = 14');
 card._config.pressure_entity = 'sensor.pressure';
 assert(card.getCardSize() === 15, 'pressure adds one more = 15');
 
+card._config.no2_entity = 'sensor.no2';
+card._config.o3_entity = 'sensor.o3';
+card._config.so2_entity = 'sensor.so2';
+assert(card.getCardSize() === 18, 'NO₂, O₃, and SO₂ each add a graph row');
+
+card._config.dominant_pollutant_entity = 'sensor.dominant_pollutant';
+assert(card.getCardSize() === 19, 'dominant pollutant adds an informational row');
+
 // ============================================================
 // GETCONFIG FORM TESTS
 // ============================================================
@@ -1414,12 +1480,12 @@ assert(typeof editor._computeLabel === 'function', 'computeLabel is a function')
 const allLabels = [
   'name', 'co2_entity', 'pm25_entity', 'humidity_entity', 'temperature_entity',
   'radon_entity', 'radon_longterm_entity', 'co_entity', 'hcho_entity', 'tvoc_entity',
-  'pm4_entity', 'nox_entity', 'pm1_entity', 'pm10_entity', 'pm03_entity',
+  'pm4_entity', 'nox_entity', 'no2_entity', 'o3_entity', 'so2_entity', 'pm1_entity', 'pm10_entity', 'pm03_entity',
   'outdoor_co2_entity', 'outdoor_pm25_entity', 'outdoor_humidity_entity', 'outdoor_temperature_entity',
   'outdoor_co_entity', 'outdoor_hcho_entity', 'outdoor_tvoc_entity',
   'outdoor_pm1_entity', 'outdoor_pm10_entity', 'outdoor_pm03_entity', 'outdoor_nox_entity',
   'pressure_entity', 'outdoor_pressure_entity',
-  'air_quality_entity', 'hours_to_show', 'temperature_unit', 'radon_unit', 'show_min_max',
+  'air_quality_entity', 'dominant_pollutant_entity', 'hours_to_show', 'temperature_unit', 'radon_unit', 'hcho_unit', 'show_min_max',
   'tvoc_unit', 'nox_unit', 'language',
   'recommendation_action', 'compact_alerts', 'auto_expand'
 ];
@@ -1454,9 +1520,28 @@ assert(advancedSection.flatten === true, 'Advanced has flatten: true');
 
 section('History Keys');
 
+section('New pollutant history loading');
+const pollutantHistoryCard = new CardClass();
+pollutantHistoryCard.setConfig({ no2_entity: 'sensor.no2', o3_entity: 'sensor.o3', so2_entity: 'sensor.so2' });
+const pollutantHistoryCalls = [];
+pollutantHistoryCard._hass = {
+  config: { unit_system: { temperature: '°F' } },
+  states: {
+    'sensor.no2': { state: '20', attributes: { unit_of_measurement: 'μg/m³' } },
+    'sensor.o3': { state: '100', attributes: { unit_of_measurement: 'μg/m³' } },
+    'sensor.so2': { state: '25', attributes: { unit_of_measurement: 'μg/m³' } }
+  },
+  callApi: async (method, uri) => { pollutantHistoryCalls.push(uri); return [[{ last_changed: '2026-06-11T00:00:00Z', state: '1' }]]; }
+};
+pollutantHistoryCard._renderGraphs = () => {};
+pollutantHistoryCard._loadHistory();
+assert(pollutantHistoryCalls.some(uri => uri.includes('sensor.no2')), 'history fetches NO₂');
+assert(pollutantHistoryCalls.some(uri => uri.includes('sensor.o3')), 'history fetches O₃');
+assert(pollutantHistoryCalls.some(uri => uri.includes('sensor.so2')), 'history fetches SO₂');
+
 const freshCard = new CardClass();
 const expectedKeys = [
-  'co2', 'pm25', 'pm1', 'pm10', 'pm03', 'pm4', 'hcho', 'tvoc', 'nox', 'co', 'radon', 'radon_longterm',
+  'co2', 'pm25', 'pm1', 'pm10', 'pm03', 'pm4', 'no2', 'o3', 'so2', 'hcho', 'tvoc', 'nox', 'co', 'radon', 'radon_longterm',
   'humidity', 'temperature', 'pressure',
   'outdoor_co2', 'outdoor_pm25', 'outdoor_pm1', 'outdoor_pm10', 'outdoor_pm03',
   'outdoor_hcho', 'outdoor_tvoc', 'outdoor_nox', 'outdoor_co',

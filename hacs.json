@@ -1,5 +1,5 @@
 {
-  "name": "Air Quality Card",
+  "name": "Air Quality Card Plus",
   "render_readme": true,
   "filename": "air-quality-card.js",
   "homeassistant": "2024.1.0"

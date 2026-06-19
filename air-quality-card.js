@@ -1,12 +1,12 @@
 /**
- * Air Quality Card v2.11.0
+ * Air Quality Card Plus v2.12.0
  * A custom Home Assistant card for air quality visualization
  * Thresholds based on WHO 2021 guidelines and ASHRAE standards
  *
  * https://github.com/KadenThomp36/air-quality-card
  */
 
-const CARD_VERSION = '2.11.0';
+const CARD_VERSION = '2.12.0';
 
 // Shared color palettes for the 5-tier color scale used across metrics.
 const SCALE_AIRQUALITY = ['#4caf50', '#8bc34a', '#ffc107', '#ff9800', '#f44336']; // green → red
@@ -27,6 +27,12 @@ const METRIC_DEFS = {
   pm1:        { defaultThresholds: [5, 15, 25, 35],          colors: SCALE_AIRQUALITY, labels: ['Excellent', 'Good', 'Moderate', 'Elevated', 'Poor'] },
   pm03:       { defaultThresholds: [500, 1000, 3000, 5000],  colors: SCALE_AIRQUALITY, labels: ['Clean', 'Good', 'Moderate', 'Elevated', 'Poor'] },
   pm4:        { defaultThresholds: [10, 25, 37.5, 50],       colors: SCALE_AIRQUALITY, labels: ['Excellent', 'Good', 'Moderate', 'Elevated', 'Poor'] },
+  // These defaults are in µg/m³, the unit normally reported by WAQI and
+  // Home Assistant's outdoor air-quality integrations. Override the matching
+  // `*_thresholds` option when a sensor reports a different unit.
+  no2:        { defaultThresholds: [10, 25, 50, 100],         colors: SCALE_AIRQUALITY, labels: ['Excellent', 'Good', 'Moderate', 'Elevated', 'Poor'] },
+  o3:         { defaultThresholds: [50, 100, 120, 180],       colors: SCALE_AIRQUALITY, labels: ['Excellent', 'Good', 'Moderate', 'Elevated', 'Poor'] },
+  so2:        { defaultThresholds: [20, 40, 75, 125],         colors: SCALE_AIRQUALITY, labels: ['Excellent', 'Good', 'Moderate', 'Elevated', 'Poor'] },
   hcho:       { defaultThresholds: [20, 50, 100, 200],       colors: SCALE_AIRQUALITY, labels: ['Excellent', 'Good', 'Moderate', 'Elevated', 'Poor'] },
   // NOx, like tVOC, comes in two flavors: absolute ppb, or the Sensirion
   // SGP41 NOx Index (unitless, 1-500, baseline 1 in clean air — unlike the
@@ -83,7 +89,7 @@ const TRANSLATIONS = {
       open_window_co2: 'CO₂ at {value} ppm - fresh air needed',
       purifier_ventilate: 'CO₂: {co2} ppm, PM2.5: {pm25} μg/m³',
       ventilate_now_co2: 'CO₂ at {value} ppm - may affect focus',
-      ventilate_formaldehyde: 'HCHO at {value} ppb - ventilation needed',
+      ventilate_formaldehyde: 'HCHO at {value} {unit} - ventilation needed',
       ventilate_formaldehyde_unknown: 'Formaldehyde levels elevated',
       ventilate_vocs: 'tVOC at {value} ppb - ventilation needed',
       ventilate_vocs_unknown: 'VOC levels elevated',
@@ -103,13 +109,14 @@ const TRANSLATIONS = {
       advisory_info: 'Radon - Monitor Closely',
       short_term: 'Short-term', long_term: 'Long-term'
     },
-    metric: { humidity: 'Humidity', temperature: 'Temperature', pressure: 'Pressure' },
+    metric: { humidity: 'Humidity', temperature: 'Temperature', pressure: 'Pressure', dominant_pollutant: 'Dominant pollutant' },
     editor: {
       name: 'Card Name', co2_entity: 'CO₂ Sensor', pm25_entity: 'PM2.5 Sensor',
       humidity_entity: 'Humidity Sensor', temperature_entity: 'Temperature Sensor',
       radon_entity: 'Radon Sensor', radon_longterm_entity: 'Radon Long-Term Sensor',
       co_entity: 'CO (Carbon Monoxide) Sensor', hcho_entity: 'Formaldehyde (HCHO) Sensor',
       tvoc_entity: 'tVOC Sensor', pm4_entity: 'PM4 Sensor', nox_entity: 'NOx Sensor',
+      no2_entity: 'NO₂ Sensor', o3_entity: 'O₃ Sensor', so2_entity: 'SO₂ Sensor',
       pm1_entity: 'PM1 Sensor', pm10_entity: 'PM10 Sensor', pm03_entity: 'PM0.3 Sensor',
       pressure_entity: 'Atmospheric Pressure Sensor',
       outdoor_co2_entity: 'Outdoor CO₂', outdoor_pm25_entity: 'Outdoor PM2.5',
@@ -118,9 +125,9 @@ const TRANSLATIONS = {
       outdoor_tvoc_entity: 'Outdoor tVOC', outdoor_pm1_entity: 'Outdoor PM1',
       outdoor_pm10_entity: 'Outdoor PM10', outdoor_pm03_entity: 'Outdoor PM0.3',
       outdoor_nox_entity: 'Outdoor NOx', outdoor_pressure_entity: 'Outdoor Pressure',
-      air_quality_entity: 'Air Quality Index (optional)', hours_to_show: 'Graph History',
+      air_quality_entity: 'Air Quality Index (optional)', dominant_pollutant_entity: 'Dominant Pollutant (informational)', hours_to_show: 'Graph History',
       temperature_unit: 'Temperature Unit', radon_unit: 'Radon Unit',
-      tvoc_unit: 'tVOC Measurement Type', nox_unit: 'NOx Measurement Type', language: 'Language',
+      tvoc_unit: 'tVOC Measurement Type', nox_unit: 'NOx Measurement Type', hcho_unit: 'HCHO Unit', language: 'Language',
       recommendation_action: 'Recommendation Action (button)',
       compact_alerts: 'Alert chips while collapsed',
       auto_expand: 'Auto-expand when air quality degrades',
@@ -180,7 +187,7 @@ class AirQualityCard extends HTMLElement {
     this._config = {};
     this._hass = null;
     this._rendered = false;
-    this._history = { co2: [], pm25: [], pm1: [], pm10: [], pm03: [], pm4: [], hcho: [], tvoc: [], nox: [], co: [], radon: [], radon_longterm: [], humidity: [], temperature: [], pressure: [], outdoor_co2: [], outdoor_pm25: [], outdoor_pm1: [], outdoor_pm10: [], outdoor_pm03: [], outdoor_hcho: [], outdoor_tvoc: [], outdoor_nox: [], outdoor_co: [], outdoor_humidity: [], outdoor_temperature: [], outdoor_pressure: [] };
+    this._history = { co2: [], pm25: [], pm1: [], pm10: [], pm03: [], pm4: [], no2: [], o3: [], so2: [], hcho: [], tvoc: [], nox: [], co: [], radon: [], radon_longterm: [], humidity: [], temperature: [], pressure: [], outdoor_co2: [], outdoor_pm25: [], outdoor_pm1: [], outdoor_pm10: [], outdoor_pm03: [], outdoor_hcho: [], outdoor_tvoc: [], outdoor_nox: [], outdoor_co: [], outdoor_humidity: [], outdoor_temperature: [], outdoor_pressure: [] };
     this._historyLoaded = false;
     this._graphData = {};
     this._isDragging = false;
@@ -194,9 +201,9 @@ class AirQualityCard extends HTMLElement {
 
     const indoorEntityKeys = [
       'co2_entity', 'pm25_entity', 'pm1_entity', 'pm10_entity', 'pm03_entity',
-      'pm4_entity', 'hcho_entity', 'tvoc_entity', 'nox_entity', 'co_entity',
+      'pm4_entity', 'no2_entity', 'o3_entity', 'so2_entity', 'hcho_entity', 'tvoc_entity', 'nox_entity', 'co_entity',
       'radon_entity', 'radon_longterm_entity', 'humidity_entity', 'temperature_entity',
-      'pressure_entity'
+      'pressure_entity', 'dominant_pollutant_entity'
     ];
     const outdoorEntityKeys = [
       'outdoor_co2_entity', 'outdoor_pm25_entity', 'outdoor_pm1_entity',
@@ -216,6 +223,7 @@ class AirQualityCard extends HTMLElement {
       hours_to_show: 24,
       temperature_unit: 'auto',
       radon_unit: 'auto',
+      hcho_unit: 'auto',
       show_min_max: false,
       display: 'full',
       compact_alerts: true,
@@ -293,8 +301,9 @@ class AirQualityCard extends HTMLElement {
     const wrapper = this.shadowRoot.getElementById(`${graphId}-graph`);
     if (!wrapper) return;
 
-    this._renderMinMaxMarker(graphId, 'max', points[maxIdx], colorFn(minMax.max), this._formatGraphValue(minMax.max, this._graphData[graphId].unit));
-    this._renderMinMaxMarker(graphId, 'min', points[minIdx], colorFn(minMax.min), this._formatGraphValue(minMax.min, this._graphData[graphId].unit));
+    const formatValue = this._graphData[graphId].formatValue || ((value) => this._formatGraphValue(value, this._graphData[graphId].unit));
+    this._renderMinMaxMarker(graphId, 'max', points[maxIdx], colorFn(minMax.max), formatValue(minMax.max));
+    this._renderMinMaxMarker(graphId, 'min', points[minIdx], colorFn(minMax.min), formatValue(minMax.min));
   }
 
   _renderMinMaxMarker(graphId, kind, point, color, valueStr) {
@@ -442,7 +451,7 @@ class AirQualityCard extends HTMLElement {
   // didn't list is appended in the default order so users never lose a
   // configured metric by forgetting to mention it.
   _getMetricOrder() {
-    const all = ['co', 'radon', 'co2', 'pm25', 'pm10', 'pm1', 'pm03', 'pm4', 'hcho', 'tvoc', 'nox', 'humidity', 'temperature', 'pressure'];
+    const all = ['co', 'radon', 'co2', 'pm25', 'pm10', 'pm1', 'pm03', 'pm4', 'hcho', 'tvoc', 'nox', 'no2', 'o3', 'so2', 'humidity', 'temperature', 'pressure'];
     if (!Array.isArray(this._config.order) || !this._config.order.length) return all;
     const valid = this._config.order.filter(m => all.includes(m));
     const remaining = all.filter(m => !valid.includes(m));
@@ -463,6 +472,7 @@ class AirQualityCard extends HTMLElement {
   getCardSize() {
     if (this._isCompact()) return 1;
     let size = 3; // Base size for header and recommendation
+    if (this._config.dominant_pollutant_entity) size += 1;
     if (this._config.co_entity) size += 1;
     if (this._config.radon_entity) size += 1;
     if (this._config.co2_entity) size += 1;
@@ -470,6 +480,9 @@ class AirQualityCard extends HTMLElement {
     if (this._config.pm10_entity) size += 1;
     if (this._config.pm1_entity) size += 1;
     if (this._config.pm03_entity) size += 1;
+    if (this._config.no2_entity) size += 1;
+    if (this._config.o3_entity) size += 1;
+    if (this._config.so2_entity) size += 1;
     if (this._config.hcho_entity) size += 1;
     if (this._config.tvoc_entity) size += 1;
     if (this._config.pm4_entity) size += 1;
@@ -539,6 +552,18 @@ class AirQualityCard extends HTMLElement {
       if (this._config.pm03_entity) {
         promises.push(this._fetchHistory(this._config.pm03_entity, startTime, endTime));
         keys.push('pm03');
+      }
+      if (this._config.no2_entity) {
+        promises.push(this._fetchHistory(this._config.no2_entity, startTime, endTime));
+        keys.push('no2');
+      }
+      if (this._config.o3_entity) {
+        promises.push(this._fetchHistory(this._config.o3_entity, startTime, endTime));
+        keys.push('o3');
+      }
+      if (this._config.so2_entity) {
+        promises.push(this._fetchHistory(this._config.so2_entity, startTime, endTime));
+        keys.push('so2');
       }
       if (this._config.hcho_entity) {
         promises.push(this._fetchHistory(this._config.hcho_entity, startTime, endTime));
@@ -668,7 +693,8 @@ class AirQualityCard extends HTMLElement {
     const overrideKey = {
       co: 'co_thresholds', co2: 'co2_thresholds', pm25: 'pm25_thresholds',
       pm10: 'pm10_thresholds', pm1: 'pm1_thresholds', pm03: 'pm03_thresholds',
-      pm4: 'pm4_thresholds', hcho: 'hcho_thresholds', pressure: 'pressure_thresholds',
+      pm4: 'pm4_thresholds', no2: 'no2_thresholds', o3: 'o3_thresholds', so2: 'so2_thresholds',
+      hcho: 'hcho_thresholds', pressure: 'pressure_thresholds',
       nox_ppb: 'nox_thresholds', nox_index: 'nox_thresholds',
       radon: 'radon_thresholds', humidity: 'humidity_thresholds',
       tvoc_ppb: 'tvoc_thresholds', tvoc_index: 'tvoc_thresholds',
@@ -676,7 +702,12 @@ class AirQualityCard extends HTMLElement {
     }[metric];
     const override = overrideKey && this._config[overrideKey];
     if (Array.isArray(override) && override.length === 4 && override.every(n => typeof n === 'number')) {
-      return override;
+      // HCHO values are normalised to ppb before tiers are evaluated. When
+      // configured/displayed as ppm, custom HCHO thresholds are naturally
+      // expressed in ppm too, so convert them once here.
+      return metric === 'hcho' && this._getHCHOUnit() === 'ppm'
+        ? override.map(value => value * 1000)
+        : override;
     }
     return METRIC_DEFS[metric].defaultThresholds;
   }
@@ -698,7 +729,8 @@ class AirQualityCard extends HTMLElement {
 
   _getCO2Color(value)  { return this._getMetricColor('co2', value); }
   _getPM25Color(value) { return this._getMetricColor('pm25', value); }
-  _getHCHOColor(value) { return this._getMetricColor('hcho', value); }
+  _getHCHOColor(value) { return this._getMetricColor('hcho', this._getHCHOPpb(value)); }
+  _getHCHOStatus(value) { return this._getMetricStatus('hcho', this._getHCHOPpb(value)); }
   _getPM4Color(value)  { return this._getMetricColor('pm4', value); }
   _getNOxColor(value)  { return this._getMetricColor(this._noxMetric(), value); }
   _getPressureColor(value) { return this._getMetricColor('pressure', value); }
@@ -708,6 +740,39 @@ class AirQualityCard extends HTMLElement {
   _getPM03Color(value) { return this._getMetricColor('pm03', value); }
   _getCOColor(value)   { return this._getMetricColor('co', value); }
   _getRadonColor(bq)   { return this._getMetricColor('radon', bq); }
+
+  _getPollutantUnit(metric) {
+    const entityId = this._config[`${metric}_entity`];
+    return this._hass?.states[entityId]?.attributes?.unit_of_measurement || 'μg/m³';
+  }
+
+  _getNO2Unit() { return this._getPollutantUnit('no2'); }
+  _getO3Unit() { return this._getPollutantUnit('o3'); }
+  _getSO2Unit() { return this._getPollutantUnit('so2'); }
+
+  _getHCHOUnit() {
+    const configured = String(this._config.hcho_unit || 'auto').toLowerCase();
+    if (configured === 'ppm' || configured === 'ppb') return configured;
+    const uom = String(this._hass?.states[this._config.hcho_entity]?.attributes?.unit_of_measurement || '').toLowerCase();
+    return uom === 'ppm' ? 'ppm' : 'ppb';
+  }
+
+  _getHCHOPpb(value) {
+    return this._getHCHOUnit() === 'ppm' ? value * 1000 : value;
+  }
+
+  _formatHCHO(value) {
+    return this._getHCHOUnit() === 'ppm' ? value.toFixed(2) : value.toFixed(1);
+  }
+
+  _formatDominantPollutant(value) {
+    const normalized = String(value || '').toLowerCase().replace(/[ _.-]/g, '');
+    const labels = {
+      pm25: 'PM2.5', pm10: 'PM10', pm1: 'PM1', no2: 'NO₂', nox: 'NOx',
+      o3: 'O₃', so2: 'SO₂', co: 'CO', co2: 'CO₂', hcho: 'HCHO', tvoc: 'tVOC'
+    };
+    return labels[normalized] || String(value || '').toUpperCase();
+  }
 
   _isVOCIndex() {
     if (this._config.tvoc_unit && String(this._config.tvoc_unit).toLowerCase() !== 'auto') {
@@ -909,7 +974,7 @@ class AirQualityCard extends HTMLElement {
     const labels = {
       co: 'CO', radon: 'Radon', co2: 'CO₂', pm25: 'PM2.5', pm10: 'PM10',
       pm1: 'PM1', pm03: 'PM0.3', pm4: 'PM4', hcho: 'HCHO', tvoc: 'tVOC',
-      nox: 'NOx', humidity: this._t('metric', 'humidity'),
+      nox: 'NOx', no2: 'NO₂', o3: 'O₃', so2: 'SO₂', humidity: this._t('metric', 'humidity'),
       temperature: this._t('metric', 'temperature'), pressure: this._t('metric', 'pressure')
     };
     const results = [];
@@ -932,7 +997,10 @@ class AirQualityCard extends HTMLElement {
         // implicit 0 (which reads as 'Too Dry' for bell-curve metrics).
         value = parseFloat(this._getState(this._config[`${metric}_entity`]));
         if (!isFinite(value)) continue;
-        if (metric === 'tvoc') {
+        if (metric === 'hcho') {
+          color = this._getHCHOColor(value);
+          status = this._getHCHOStatus(value);
+        } else if (metric === 'tvoc') {
           color = this._getTVOCColor(value);
           status = this._getMetricStatus(this._tvocMetric(), value);
         } else if (metric === 'nox') {
@@ -963,7 +1031,7 @@ class AirQualityCard extends HTMLElement {
     const co2 = this._config.co2_entity ? this._getNumericState(this._config.co2_entity) : 0;
     const pm25 = this._config.pm25_entity ? this._getNumericState(this._config.pm25_entity) : 0;
     const pm10 = this._config.pm10_entity ? this._getNumericState(this._config.pm10_entity) : 0;
-    const hcho = this._config.hcho_entity ? this._getNumericState(this._config.hcho_entity) : 0;
+    const hcho = this._config.hcho_entity ? this._getHCHOPpb(this._getNumericState(this._config.hcho_entity)) : 0;
     const tvoc = this._config.tvoc_entity ? this._getNumericState(this._config.tvoc_entity) : 0;
     const humidity = this._config.humidity_entity ? this._getNumericState(this._config.humidity_entity) : 45;
 
@@ -1188,6 +1256,9 @@ class AirQualityCard extends HTMLElement {
     const showPM10 = !!this._config.pm10_entity;
     const showPM1 = !!this._config.pm1_entity;
     const showPM03 = !!this._config.pm03_entity;
+    const showNO2 = !!this._config.no2_entity;
+    const showO3 = !!this._config.o3_entity;
+    const showSO2 = !!this._config.so2_entity;
     const showHCHO = !!this._config.hcho_entity;
     const showTVOC = !!this._config.tvoc_entity;
     const showPM4 = !!this._config.pm4_entity;
@@ -1256,6 +1327,25 @@ class AirQualityCard extends HTMLElement {
           font-size: 0.8em;
           font-weight: 500;
           text-transform: capitalize;
+        }
+
+        .dominant-pollutant {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          margin: -4px 0 12px;
+          padding: 5px 9px;
+          border-radius: 8px;
+          background: var(--secondary-background-color);
+          color: var(--secondary-text-color);
+          font-size: 0.78em;
+        }
+        .dominant-pollutant ha-icon {
+          --mdc-icon-size: 16px;
+        }
+        .dominant-pollutant strong {
+          color: var(--primary-text-color);
+          font-weight: 600;
         }
 
         .recommendation {
@@ -1569,6 +1659,13 @@ class AirQualityCard extends HTMLElement {
             </div>
           </div>
 
+          ${this._config.dominant_pollutant_entity ? `
+          <div class="dominant-pollutant" id="dominant-pollutant" style="display:none">
+            <ha-icon icon="mdi:target"></ha-icon>
+            <span>${this._t('metric', 'dominant_pollutant')}: <strong id="dominant-pollutant-value"></strong></span>
+          </div>
+          ` : ''}
+
           ${!this._outdoorOnly ? `
           <div class="recommendation" id="recommendation">
             <ha-icon id="rec-icon" icon="mdi:check-circle"></ha-icon>
@@ -1745,7 +1842,7 @@ class AirQualityCard extends HTMLElement {
             <div class="graph-container" id="hcho-graph-container" data-entity="${this._config.hcho_entity}">
               <div class="graph-header">
                 <span class="graph-label">HCHO / CH₂O</span>
-                <span class="graph-value" id="hcho-value">-- <span class="unit">ppb</span><span class="status" id="hcho-status"></span></span>
+                <span class="graph-value" id="hcho-value">-- <span class="unit">${this._getHCHOUnit()}</span><span class="status" id="hcho-status"></span></span>
               </div>
               <div class="graph-wrapper">
                 <div class="graph" id="hcho-graph">
@@ -1822,6 +1919,51 @@ class AirQualityCard extends HTMLElement {
                 </div>
               </div>
               <div class="graph-time-axis" id="nox-time-axis"></div>
+            </div>
+            ` : ''}
+
+            ${showNO2 ? `
+            <div class="graph-container" id="no2-graph-container" data-entity="${this._config.no2_entity}">
+              <div class="graph-header">
+                <span class="graph-label">NO₂</span>
+                <span class="graph-value" id="no2-value">-- <span class="unit">${this._getNO2Unit()}</span><span class="status" id="no2-status"></span></span>
+              </div>
+              <div class="graph-wrapper">
+                <div class="graph" id="no2-graph"><svg id="no2-svg" viewBox="0 0 300 50" preserveAspectRatio="none"></svg></div>
+                <div class="graph-cursor" id="no2-cursor"></div>
+                <div class="graph-tooltip" id="no2-tooltip"><div class="graph-tooltip-value"></div><div class="graph-tooltip-time"></div></div>
+              </div>
+              <div class="graph-time-axis" id="no2-time-axis"></div>
+            </div>
+            ` : ''}
+
+            ${showO3 ? `
+            <div class="graph-container" id="o3-graph-container" data-entity="${this._config.o3_entity}">
+              <div class="graph-header">
+                <span class="graph-label">O₃</span>
+                <span class="graph-value" id="o3-value">-- <span class="unit">${this._getO3Unit()}</span><span class="status" id="o3-status"></span></span>
+              </div>
+              <div class="graph-wrapper">
+                <div class="graph" id="o3-graph"><svg id="o3-svg" viewBox="0 0 300 50" preserveAspectRatio="none"></svg></div>
+                <div class="graph-cursor" id="o3-cursor"></div>
+                <div class="graph-tooltip" id="o3-tooltip"><div class="graph-tooltip-value"></div><div class="graph-tooltip-time"></div></div>
+              </div>
+              <div class="graph-time-axis" id="o3-time-axis"></div>
+            </div>
+            ` : ''}
+
+            ${showSO2 ? `
+            <div class="graph-container" id="so2-graph-container" data-entity="${this._config.so2_entity}">
+              <div class="graph-header">
+                <span class="graph-label">SO₂</span>
+                <span class="graph-value" id="so2-value">-- <span class="unit">${this._getSO2Unit()}</span><span class="status" id="so2-status"></span></span>
+              </div>
+              <div class="graph-wrapper">
+                <div class="graph" id="so2-graph"><svg id="so2-svg" viewBox="0 0 300 50" preserveAspectRatio="none"></svg></div>
+                <div class="graph-cursor" id="so2-cursor"></div>
+                <div class="graph-tooltip" id="so2-tooltip"><div class="graph-tooltip-value"></div><div class="graph-tooltip-time"></div></div>
+              </div>
+              <div class="graph-time-axis" id="so2-time-axis"></div>
             </div>
             ` : ''}
 
@@ -1934,6 +2076,9 @@ class AirQualityCard extends HTMLElement {
     const pm10 = this._config.pm10_entity ? this._getNumericState(this._config.pm10_entity) : null;
     const pm1 = this._config.pm1_entity ? this._getNumericState(this._config.pm1_entity) : null;
     const pm03 = this._config.pm03_entity ? this._getNumericState(this._config.pm03_entity) : null;
+    const no2 = this._config.no2_entity ? this._getNumericState(this._config.no2_entity) : null;
+    const o3 = this._config.o3_entity ? this._getNumericState(this._config.o3_entity) : null;
+    const so2 = this._config.so2_entity ? this._getNumericState(this._config.so2_entity) : null;
     const hcho = this._config.hcho_entity ? this._getNumericState(this._config.hcho_entity) : null;
     const tvoc = this._config.tvoc_entity ? this._getNumericState(this._config.tvoc_entity) : null;
     const pm4 = this._config.pm4_entity ? this._getNumericState(this._config.pm4_entity) : null;
@@ -1955,6 +2100,19 @@ class AirQualityCard extends HTMLElement {
       statusBadge.style.color = overall.color;
       statusText.textContent = overall.status;
       statusIcon.style.color = overall.color;
+    }
+
+    // Informational, text-only row for integrations such as WAQI. It is kept
+    // out of history and graph handling because its state is not numeric.
+    const dominantEl = this.shadowRoot.getElementById('dominant-pollutant');
+    if (dominantEl && this._config.dominant_pollutant_entity) {
+      const value = this._getState(this._config.dominant_pollutant_entity);
+      const valid = value && value !== 'unknown' && value !== 'unavailable';
+      dominantEl.style.display = valid ? '' : 'none';
+      if (valid) {
+        const valueEl = this.shadowRoot.getElementById('dominant-pollutant-value');
+        if (valueEl) valueEl.textContent = this._formatDominantPollutant(value);
+      }
     }
 
     // Alert chips (#40): while collapsed, itemize which sensors are out of
@@ -2006,7 +2164,9 @@ class AirQualityCard extends HTMLElement {
         subtitle = this._ts('subtitle', 'ventilate_now_co2', { value: Math.round(co2) });
       } else if (recKey === 'ventilate_formaldehyde') {
         const hcho = this._config.hcho_entity ? this._getNumericState(this._config.hcho_entity) : null;
-        subtitle = hcho !== null ? this._ts('subtitle', 'ventilate_formaldehyde', { value: hcho.toFixed(0) }) : this._t('subtitle', 'ventilate_formaldehyde_unknown');
+        subtitle = hcho !== null
+          ? `HCHO at ${this._formatHCHO(hcho)} ${this._getHCHOUnit()} - ventilation needed`
+          : this._t('subtitle', 'ventilate_formaldehyde_unknown');
       } else if (recKey === 'ventilate_vocs') {
         const tvoc = this._config.tvoc_entity ? this._getNumericState(this._config.tvoc_entity) : null;
         subtitle = tvoc !== null ? this._ts('subtitle', 'ventilate_vocs', { value: tvoc.toFixed(0) }) : this._t('subtitle', 'ventilate_vocs_unknown');
@@ -2048,12 +2208,13 @@ class AirQualityCard extends HTMLElement {
     }
 
     // Helper to render outdoor value suffix
-    const outdoorSuffix = (entityKey, value, unit) => {
+    const outdoorSuffix = (entityKey, value, unit, formatter) => {
       if (!this._config[entityKey]) return '';
       const val = this._getNumericState(this._config[entityKey]);
       // Unitless index metrics (empty unit) match the indoor 1-decimal display
       const precise = unit === 'μg/m³' || unit === 'µg/m³' || unit === 'ppb' || unit === '';
-      return ` <span class="outdoor-value">(out: ${precise ? val.toFixed(1) : Math.round(val)}${unit ? ' ' + unit : ''})</span>`;
+      const display = formatter ? formatter(val) : (precise ? val.toFixed(1) : Math.round(val));
+      return ` <span class="outdoor-value">(out: ${display}${unit ? ' ' + unit : ''})</span>`;
     };
 
     // Update CO
@@ -2208,14 +2369,33 @@ class AirQualityCard extends HTMLElement {
       }
     }
 
+    // Update NO₂, O₃, and SO₂. These are first-class numeric metrics, not
+    // aliases of NOx, so each keeps its own state, thresholds, and history.
+    const updatePollutant = (metric, value, unit) => {
+      if (value === null) return;
+      const color = this._getMetricColor(metric, value);
+      const valueEl = this.shadowRoot.getElementById(`${metric}-value`);
+      if (!valueEl) return;
+      valueEl.innerHTML = `${value.toFixed(1)} <span class="unit">${unit}</span><span class="status" id="${metric}-status"></span>`;
+      const statusEl = valueEl.querySelector('.status');
+      statusEl.textContent = this._getMetricStatus(metric, value);
+      statusEl.style.background = color + '22';
+      statusEl.style.color = color;
+      valueEl.style.color = color;
+    };
+    updatePollutant('no2', no2, this._getNO2Unit());
+    updatePollutant('o3', o3, this._getO3Unit());
+    updatePollutant('so2', so2, this._getSO2Unit());
+
     // Update HCHO
     if (hcho !== null) {
       const hchoColor = this._getHCHOColor(hcho);
+      const hchoUnit = this._getHCHOUnit();
       const hchoValueEl = this.shadowRoot.getElementById('hcho-value');
       if (hchoValueEl) {
-        hchoValueEl.innerHTML = `${hcho.toFixed(1)} <span class="unit">ppb</span><span class="status" id="hcho-status"></span>${outdoorSuffix('outdoor_hcho_entity', hcho, 'ppb')}`;
+        hchoValueEl.innerHTML = `${this._formatHCHO(hcho)} <span class="unit">${hchoUnit}</span><span class="status" id="hcho-status"></span>${outdoorSuffix('outdoor_hcho_entity', hcho, hchoUnit, value => this._formatHCHO(value))}`;
         const statusEl = hchoValueEl.querySelector('.status');
-        statusEl.textContent = this._getMetricStatus('hcho', hcho);
+        statusEl.textContent = this._getHCHOStatus(hcho);
         statusEl.style.background = hchoColor + '22';
         statusEl.style.color = hchoColor;
         hchoValueEl.style.color = hchoColor;
@@ -2348,8 +2528,18 @@ class AirQualityCard extends HTMLElement {
     if (this._config.pm03_entity && this._history.pm03.length) {
       this._renderGraph('pm03', this._history.pm03, this._getPM03Color.bind(this), 0, 5000, 'p/0.1L', this._history.outdoor_pm03);
     }
+    if (this._config.no2_entity && this._history.no2.length) {
+      this._renderGraph('no2', this._history.no2, (value) => this._getMetricColor('no2', value), 0, Math.max(150, this._metricThresholds('no2')[3] * 1.2), this._getNO2Unit());
+    }
+    if (this._config.o3_entity && this._history.o3.length) {
+      this._renderGraph('o3', this._history.o3, (value) => this._getMetricColor('o3', value), 0, Math.max(240, this._metricThresholds('o3')[3] * 1.2), this._getO3Unit());
+    }
+    if (this._config.so2_entity && this._history.so2.length) {
+      this._renderGraph('so2', this._history.so2, (value) => this._getMetricColor('so2', value), 0, Math.max(150, this._metricThresholds('so2')[3] * 1.2), this._getSO2Unit());
+    }
     if (this._config.hcho_entity && this._history.hcho.length) {
-      this._renderGraph('hcho', this._history.hcho, this._getHCHOColor.bind(this), 0, 300, 'ppb', this._history.outdoor_hcho);
+      const hchoUnit = this._getHCHOUnit();
+      this._renderGraph('hcho', this._history.hcho, this._getHCHOColor.bind(this), 0, hchoUnit === 'ppm' ? 0.3 : 300, hchoUnit, this._history.outdoor_hcho, undefined, (value) => this._formatHCHO(value));
     }
     if (this._config.tvoc_entity && this._history.tvoc.length) {
       const tvocUnit = this._getTVOCUnit();
@@ -2379,7 +2569,7 @@ class AirQualityCard extends HTMLElement {
     this._setupGraphInteractions();
   }
 
-  _renderGraph(graphId, data, colorFn, minVal, maxVal, unit, outdoorData, outdoorLabel) {
+  _renderGraph(graphId, data, colorFn, minVal, maxVal, unit, outdoorData, outdoorLabel, formatValue) {
     const svg = this.shadowRoot.getElementById(`${graphId}-svg`);
     const timeAxis = this.shadowRoot.getElementById(`${graphId}-time-axis`);
     if (!svg || !data.length) return;
@@ -2413,7 +2603,7 @@ class AirQualityCard extends HTMLElement {
       });
     }
 
-    this._graphData[graphId] = { points, outdoorPoints, unit, colorFn, outdoorLabel: outdoorLabel || 'Outdoor' };
+    this._graphData[graphId] = { points, outdoorPoints, unit, colorFn, formatValue, outdoorLabel: outdoorLabel || 'Outdoor' };
 
     if (this._config.show_min_max) {
       this._updateMinMaxDisplay(graphId, data, colorFn);
@@ -2620,12 +2810,13 @@ class AirQualityCard extends HTMLElement {
     const outdoorEl = tooltip.querySelector('.graph-tooltip-outdoor');
     const timeEl = tooltip.querySelector('.graph-tooltip-time');
 
-    const formatVal = (val) => {
+    const defaultFormatVal = (val) => {
       if (data.unit === 'ppm' || data.unit === 'ppb' || data.unit === 'p/0.1L' || data.unit === 'Bq/m³') return Math.round(val);
       if (data.unit === '%' || data.unit === '°F' || data.unit === '°C') return Math.round(val);
       if (data.unit === 'pCi/L') return val.toFixed(1);
       return val.toFixed(1);
     };
+    const formatVal = data.formatValue || defaultFormatVal;
 
     if (valueEl) {
       valueEl.textContent = `${formatVal(closest.value)} ${data.unit}`;
@@ -2670,8 +2861,8 @@ customElements.define('air-quality-card', AirQualityCard);
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: 'air-quality-card',
-  name: 'Air Quality Card',
-  description: 'A custom card for air quality monitoring with WHO-based thresholds and gradient graphs',
+  name: 'Air Quality Card Plus',
+  description: 'A custom air-quality card with gradient graphs plus NO₂, O₃, SO₂, and HCHO ppm support',
   preview: true,
   documentationURL: 'https://github.com/KadenThomp36/air-quality-card'
 });
@@ -2708,6 +2899,7 @@ if (LitElement && !customElements.get('air-quality-card-editor')) {
         hours_to_show: 24,
         temperature_unit: 'auto',
         radon_unit: 'auto',
+        hcho_unit: 'auto',
         language: 'auto',
         ...config
       };
@@ -2798,13 +2990,26 @@ if (LitElement && !customElements.get('air-quality-card-editor')) {
               type: 'grid',
               schema: [
                 { name: 'nox_entity', selector: { entity: { domain: 'sensor' } } },
-                { name: 'pm1_entity', selector: { entity: { filter: [{ domain: 'sensor', device_class: 'pm1' }] } } },
+                { name: 'no2_entity', selector: { entity: { domain: 'sensor' } } },
               ]
             },
             {
               type: 'grid',
               schema: [
+                { name: 'o3_entity', selector: { entity: { domain: 'sensor' } } },
+                { name: 'so2_entity', selector: { entity: { domain: 'sensor' } } },
+              ]
+            },
+            {
+              type: 'grid',
+              schema: [
+                { name: 'pm1_entity', selector: { entity: { filter: [{ domain: 'sensor', device_class: 'pm1' }] } } },
                 { name: 'pm10_entity', selector: { entity: { filter: [{ domain: 'sensor', device_class: 'pm10' }] } } },
+              ]
+            },
+            {
+              type: 'grid',
+              schema: [
                 { name: 'pm03_entity', selector: { entity: { domain: 'sensor' } } },
               ]
             },
@@ -2871,6 +3076,7 @@ if (LitElement && !customElements.get('air-quality-card-editor')) {
           flatten: true,
           schema: [
             { name: 'air_quality_entity', selector: { entity: { domain: 'sensor' } } },
+            { name: 'dominant_pollutant_entity', selector: { entity: { domain: 'sensor' } } },
             { name: 'hours_to_show', selector: { number: { min: 1, max: 168, mode: 'box', unit_of_measurement: 'hours' } } },
             { name: 'show_min_max', selector: { boolean: {} } },
             { name: 'order', selector: { select: { multiple: true, mode: 'list', options: [
@@ -2885,6 +3091,9 @@ if (LitElement && !customElements.get('air-quality-card-editor')) {
               { value: 'hcho', label: 'HCHO' },
               { value: 'tvoc', label: 'tVOC' },
               { value: 'nox', label: 'NOx' },
+              { value: 'no2', label: 'NO₂' },
+              { value: 'o3', label: 'O₃' },
+              { value: 'so2', label: 'SO₂' },
               { value: 'humidity', label: 'Humidity' },
               { value: 'temperature', label: 'Temperature' },
               { value: 'pressure', label: 'Pressure' }
@@ -2899,6 +3108,7 @@ if (LitElement && !customElements.get('air-quality-card-editor')) {
             { name: 'language', selector: { select: { options: [{ value: 'auto', label: 'Auto (from HA)' }, { value: 'en', label: 'English' }, { value: 'es', label: 'Español' }, { value: 'fr', label: 'Français' }, { value: 'de', label: 'Deutsch' }, { value: 'pt', label: 'Português' }], mode: 'dropdown' } } },
             { name: 'temperature_unit', selector: { select: { options: [{ value: 'auto', label: 'Auto (from HA)' }, { value: 'F', label: 'Fahrenheit (°F)' }, { value: 'C', label: 'Celsius (°C)' }], mode: 'dropdown' } } },
             { name: 'radon_unit', selector: { select: { options: [{ value: 'auto', label: 'Auto (from sensor)' }, { value: 'pCi/L', label: 'pCi/L (US)' }, { value: 'Bq/m³', label: 'Bq/m³ (International)' }], mode: 'dropdown' } } },
+            { name: 'hcho_unit', selector: { select: { options: [{ value: 'auto', label: 'Auto-detect (from sensor)' }, { value: 'ppb', label: 'ppb' }, { value: 'ppm', label: 'ppm' }], mode: 'dropdown' } } },
             { name: 'tvoc_unit', selector: { select: { options: [{ value: 'auto', label: 'Auto-detect' }, { value: 'ppb', label: 'Absolute (ppb)' }, { value: 'index', label: 'VOC Index (Sensirion)' }], mode: 'dropdown' } } },
             { name: 'nox_unit', selector: { select: { options: [{ value: 'auto', label: 'Auto-detect' }, { value: 'ppb', label: 'Absolute (ppb)' }, { value: 'index', label: 'NOx Index (Sensirion)' }], mode: 'dropdown' } } },
           ]
@@ -2945,4 +3155,3 @@ if (LitElement && !customElements.get('air-quality-card-editor')) {
 
   customElements.define('air-quality-card-editor', AirQualityCardEditor);
 }
-

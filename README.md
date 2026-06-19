@@ -1,8 +1,10 @@
-# Air Quality Card
+# Air Quality Card Plus
 
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-yellow?style=flat&logo=buy-me-a-coffee)](https://buymeacoffee.com/kadenthomp36)
 
-A custom Home Assistant Lovelace card for monitoring indoor air quality with beautiful gradient graphs and WHO-based health thresholds.
+A custom Home Assistant Lovelace card for indoor and outdoor air-quality dashboards, with compact gradient graphs and health-oriented status thresholds.
+
+This is a personalised extension of [KadenThomp36/air-quality-card](https://github.com/KadenThomp36/air-quality-card). It preserves the upstream MIT licence and attribution while adding first-class support for NO₂, O₃, SO₂, WAQI-style dominant pollutant text, and HCHO sensors that report in ppm.
 
 ![Air Quality Card Preview](https://raw.githubusercontent.com/KadenThomp36/air-quality-card/main/images/preview.png)
 
@@ -21,7 +23,9 @@ A custom Home Assistant Lovelace card for monitoring indoor air quality with bea
 
 ## Features
 
-- **Real-time monitoring** of CO, Radon, CO2, PM2.5, PM10, PM1, PM0.3, HCHO, tVOC, humidity, temperature, and atmospheric pressure
+- **Real-time monitoring** of CO, Radon, CO2, PM2.5, PM10, PM1, PM0.3, HCHO, tVOC, NOx, NO₂, O₃, SO₂, humidity, temperature, and atmospheric pressure
+- **WAQI-friendly outdoor pollutants** — separate NO₂, O₃, and SO₂ metric cards with their own history, thresholds, status badges, and order controls
+- **Dominant pollutant row** — a text-only informational chip for entities such as WAQI's `pm25`, `no2`, `o3`, and `so2`
 - **CO safety alerts** -- critical red warnings for dangerous carbon monoxide levels
 - **Radon advisory banner** -- separate long-term health advisory with EPA/WHO thresholds (supports pCi/L and Bq/m3)
 - **Gradient-colored graphs** that change color based on air quality levels
@@ -34,19 +38,17 @@ A custom Home Assistant Lovelace card for monitoring indoor air quality with bea
 
 ## Installation
 
-### HACS (Recommended)
+### HACS
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=KadenThomp36&repository=air-quality-card&category=plugin)
-
-Or manually: open HACS, search for "Air Quality Card", click Install, and refresh your browser.
+After adding this fork as a custom HACS repository, install it as a Lovelace plugin and refresh the browser. Do not install the upstream card alongside this fork at the same resource path.
 
 ### Manual Installation
 
-1. Download `air-quality-card.js` from the latest release
-2. Copy it to `/config/www/air-quality-card/air-quality-card.js`
+1. Download `air-quality-card.js` from this repository's release or main branch
+2. Copy it to `/config/www/air-quality-card-plus/air-quality-card.js`
 3. Add the resource in Home Assistant:
    - Go to Settings → Dashboards → Resources
-   - Add `/local/air-quality-card/air-quality-card.js` as a JavaScript Module
+   - Add `/local/air-quality-card-plus/air-quality-card.js?v=2.12.0` as a JavaScript Module
 
 ## Configuration
 
@@ -56,7 +58,7 @@ Or manually: open HACS, search for "Air Quality Card", click Install, and refres
 2. Search for "Air Quality Card"
 3. Configure the entities using the visual editor
 4. Primary sensors (CO₂, PM2.5, Humidity, Temperature) are always visible
-5. Expand "Additional Sensors" for Radon, CO, HCHO, tVOC, PM1, PM10, PM0.3
+5. Expand "Additional Sensors" for Radon, CO, HCHO, tVOC, NOx, NO₂, O₃, SO₂, PM1, PM10, PM4, and PM0.3
 6. Expand "Outdoor Sensors" for comparison data
 
 ### YAML Configuration
@@ -79,6 +81,68 @@ outdoor_co2_entity: sensor.outdoor_co2
 outdoor_pm25_entity: sensor.outdoor_pm25
 ```
 
+### Barcelona Eixample (WAQI) example
+
+`dominant_pollutant_entity` is intentionally text-only: it appears as an informational row under the card header and is never sent to the graph/history pipeline.
+
+```yaml
+type: custom:air-quality-card
+name: Barcelona (Eixample) Air Quality
+hours_to_show: 24
+temperature_unit: C
+language: auto
+
+air_quality_entity: sensor.barcelona_eixample_catalunya_spain_air_quality_index
+dominant_pollutant_entity: sensor.barcelona_eixample_catalunya_spain_dominant_pollutant
+
+pm25_entity: sensor.barcelona_eixample_catalunya_spain_pm2_5
+pm10_entity: sensor.barcelona_eixample_catalunya_spain_pm10
+no2_entity: sensor.barcelona_eixample_catalunya_spain_nitrogen_dioxide
+o3_entity: sensor.barcelona_eixample_catalunya_spain_ozone
+so2_entity: sensor.barcelona_eixample_catalunya_spain_sulphur_dioxide
+co_entity: sensor.barcelona_eixample_catalunya_spain_carbon_monoxide
+
+humidity_entity: sensor.barcelona_eixample_catalunya_spain_humidity
+temperature_entity: sensor.barcelona_eixample_catalunya_spain_temperature
+pressure_entity: sensor.barcelona_eixample_catalunya_spain_pressure
+
+order:
+  - pm25
+  - pm10
+  - no2
+  - o3
+  - so2
+  - co
+  - humidity
+  - temperature
+  - pressure
+```
+
+### Indoor HCHO in ppm example
+
+```yaml
+type: custom:air-quality-card
+name: Bedroom Air Quality
+hours_to_show: 24
+temperature_unit: C
+radon_unit: auto
+language: auto
+
+co2_entity: sensor.bedroom_air_sensor_carbon_dioxide
+pm25_entity: sensor.bedroom_air_sensor_pm2_5
+hcho_entity: sensor.bedroom_air_sensor_formaldehyde_concentration
+hcho_unit: ppm
+tvoc_entity: sensor.bedroom_air_sensor_volatile_organic_compounds
+
+humidity_entity: sensor.bedroom_sensor_humidity
+temperature_entity: sensor.bedroom_sensor_temperature
+outdoor_humidity_entity: sensor.outdoor_sensor_humidity
+outdoor_temperature_entity: sensor.outdoor_sensor_temperature
+
+show_min_max: false
+tvoc_unit: auto
+```
+
 ### Configuration Options
 
 | Option | Type | Required | Default | Description |
@@ -89,6 +153,9 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 | `pm1_entity` | string | No* | - | PM1 sensor entity ID |
 | `pm10_entity` | string | No* | - | PM10 sensor entity ID |
 | `pm03_entity` | string | No* | - | PM0.3 particle count sensor entity ID |
+| `no2_entity` | string | No* | - | Nitrogen dioxide (NO₂) sensor entity ID |
+| `o3_entity` | string | No* | - | Ozone (O₃) sensor entity ID |
+| `so2_entity` | string | No* | - | Sulphur dioxide (SO₂) sensor entity ID |
 | `co_entity` | string | No* | - | Carbon monoxide (CO) sensor entity ID |
 | `radon_entity` | string | No* | - | Radon sensor entity ID (supports pCi/L and Bq/m3) |
 | `radon_longterm_entity` | string | No | - | Radon long-term average sensor (shown as dashed overlay on radon graph) |
@@ -100,9 +167,11 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 | `temperature_entity` | string | No* | - | Temperature sensor entity ID |
 | `pressure_entity` | string | No* | - | Atmospheric pressure sensor entity ID (e.g. Airthings) |
 | `air_quality_entity` | string | No | - | Overall air quality index entity ([passthrough — see below](#air-quality-index-entity)) |
+| `dominant_pollutant_entity` | string | No | - | Informational text entity (for example `pm25`, `no2`, `o3`); shown as a friendly label, never plotted |
 | `hours_to_show` | number | No | 24 | Hours of history to display (1-168) |
 | `temperature_unit` | string | No | "auto" | Temperature unit: "auto" (detect from HA), "F" (Fahrenheit), or "C" (Celsius) |
 | `radon_unit` | string | No | "auto" | Radon unit: "auto" (detect from sensor), "pCi/L" (US), or "Bq/m3" (International) |
+| `hcho_unit` | string | No | "auto" | HCHO unit: "auto" (detect from entity), "ppb", or "ppm" |
 | `tvoc_unit` | string | No | "auto" | tVOC measurement type: "auto" (detect from sensor), "ppb" (absolute), or "index" (Sensirion VOC Index) |
 | `nox_unit` | string | No | "auto" | NOx measurement type: "auto" (detect from sensor), "ppb" (absolute), or "index" (Sensirion NOx Index) |
 | `show_min_max` | boolean | No | `false` | Overlay the min/max values of the displayed time window directly at the data points on the graph |
@@ -121,7 +190,10 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 | `pm1_thresholds` | array | No | `[5, 15, 25, 35]` | Custom PM1 thresholds |
 | `pm03_thresholds` | array | No | `[500, 1000, 3000, 5000]` | Custom PM0.3 thresholds |
 | `pm4_thresholds` | array | No | `[10, 25, 37.5, 50]` | Custom PM4 thresholds |
-| `hcho_thresholds` | array | No | `[20, 50, 100, 200]` | Custom HCHO thresholds (ppb) |
+| `no2_thresholds` | array | No | `[10, 25, 50, 100]` | Custom NO₂ thresholds (default unit µg/m³) |
+| `o3_thresholds` | array | No | `[50, 100, 120, 180]` | Custom O₃ thresholds (default unit µg/m³) |
+| `so2_thresholds` | array | No | `[20, 40, 75, 125]` | Custom SO₂ thresholds (default unit µg/m³) |
+| `hcho_thresholds` | array | No | `[20, 50, 100, 200]` ppb / `[0.020, 0.050, 0.100, 0.200]` ppm | Custom HCHO thresholds in the selected `hcho_unit` |
 | `tvoc_thresholds` | array | No | mode-dependent | Custom tVOC thresholds (units depend on `tvoc_unit`) |
 | `nox_thresholds` | array | No | mode-dependent | Custom NOx thresholds (units depend on `nox_unit`; defaults `[20, 53, 100, 360]` ppb / `[5, 20, 150, 300]` index) |
 | `radon_thresholds` | array | No | `[48, 100, 148, 300]` | Custom radon thresholds (Bq/m³ — even if you display in pCi/L) |
@@ -154,7 +226,7 @@ If you leave it unset, the card computes the status itself from your configured 
 
 Customize which sensors come first on the card. In the visual editor, use the multi-select to tick metrics in the order you want them shown. In YAML, provide a list of metric names. Any metric you don't list keeps its default position and stays visible.
 
-Valid metric names: `co`, `radon`, `co2`, `pm25`, `pm10`, `pm1`, `pm03`, `pm4`, `hcho`, `tvoc`, `nox`, `humidity`, `temperature`, `pressure`.
+Valid metric names: `co`, `radon`, `co2`, `pm25`, `pm10`, `pm1`, `pm03`, `pm4`, `hcho`, `tvoc`, `nox`, `no2`, `o3`, `so2`, `humidity`, `temperature`, `pressure`. `dominant_pollutant_entity` is an informational header row, not a graph metric, so it is not included in `order`.
 
 ```yaml
 type: custom:air-quality-card
@@ -249,7 +321,7 @@ pm25_thresholds: [3, 8, 15, 25]
 ```
 
 Notes:
-- All custom thresholds are in the same unit as your sensor reports. For radon, the thresholds are always in **Bq/m³** — the card converts your sensor value before comparison.
+- All custom thresholds are in the same unit as your sensor reports. For HCHO, they are in the selected `hcho_unit`; the card converts ppm to internal ppb values before calculating status colors. For radon, the thresholds are always in **Bq/m³** — the card converts your sensor value before comparison.
 - Invalid thresholds (wrong length, non-numeric, etc.) silently fall back to the defaults. No errors thrown.
 - Colors are not customizable — only the boundaries between them.
 
@@ -363,6 +435,9 @@ Based on WHO 2021 Air Quality Guidelines:
 | Poor | > 5000 p/0.1L | Red | Air purifier recommended |
 
 ### HCHO (Formaldehyde)
+
+Set `hcho_unit: auto`, `ppb`, or `ppm`. In `auto` mode the card reads the entity's `unit_of_measurement`; sensors without a recognised unit retain the backwards-compatible `ppb` behavior. HCHO status colors and thresholds are always evaluated in ppb internally, but ppm readings are displayed and graphed in ppm with two decimal places (for example, `0.04 ppm`). The default bands are `[20, 50, 100, 200]` ppb, equivalent to `[0.020, 0.050, 0.100, 0.200]` ppm.
+
 | Level | Range | Color | Meaning |
 |-------|-------|-------|---------|
 | Excellent | < 20 ppb | Green | Safe levels |
@@ -395,6 +470,8 @@ VOC Index (Sensirion):
 ### NOx (Nitrogen Oxides)
 Like tVOC, NOx comes in two flavors and the card auto-detects which one your sensor reports (force with `nox_unit`). Sensirion SGP41-based sensors (AirGradient ONE / Open Air, ESPHome `sgp4x`) report the unitless **NOx Index** — note its clean-air baseline is **1**, not 100 like the VOC Index.
 
+`nox_entity` remains for aggregate NOx concentration or the Sensirion **NOx Index**. Use the new `no2_entity` for a direct nitrogen dioxide (NO₂) measurement; it has a separate graph, state, status badge, thresholds, and history, and never reuses the NOx index behavior.
+
 NOx Index (Sensirion) — bands follow Sensirion's integration guidance and AirGradient's dashboard:
 | Level | Range | Color | Meaning |
 |-------|-------|-------|---------|
@@ -412,6 +489,16 @@ Absolute (ppb) — anchored to WHO 2021 / EPA NO₂ standards (applied to NOx co
 | Moderate | 53-100 ppb | Yellow | Under the EPA 1-hour NAAQS (100 ppb) |
 | Elevated | 100-360 ppb | Orange | EPA AQI Unhealthy-for-Sensitive-Groups range |
 | Poor | > 360 ppb | Red | EPA AQI Unhealthy and above |
+
+### NO₂, O₃, and SO₂
+
+These standalone pollutant metrics are intended for integrations such as WAQI that report concentrations in **µg/m³**. The card uses the entity's own unit label. The defaults below are starting bands for compact dashboard status colors; use `no2_thresholds`, `o3_thresholds`, or `so2_thresholds` if the source uses another unit or you prefer different alert boundaries.
+
+| Metric | Default thresholds | Configuration key |
+|--------|--------------------|-------------------|
+| NO₂ | `[10, 25, 50, 100]` µg/m³ | `no2_thresholds` |
+| O₃ | `[50, 100, 120, 180]` µg/m³ | `o3_thresholds` |
+| SO₂ | `[20, 40, 75, 125]` µg/m³ | `so2_thresholds` |
 
 ### Humidity
 | Level | Range | Color | Meaning |
@@ -434,7 +521,7 @@ Informational, not a health hazard — a wide green band keeps typical weather c
 
 ## Supported Devices
 
-This card works with any sensor that provides entities for CO, Radon, CO2, PM2.5, PM10, PM4, PM1, PM0.3, HCHO, tVOC, NOx, humidity, temperature, or atmospheric pressure. Use any combination -- even a single sensor works. Tested with:
+This card works with any sensor that provides entities for CO, Radon, CO2, PM2.5, PM10, PM4, PM1, PM0.3, HCHO, tVOC, NOx, NO₂, O₃, SO₂, humidity, temperature, atmospheric pressure, or dominant-pollutant text. Use any combination -- even a single sensor works. Tested with:
 
 - IKEA VINDSTYRKA / ALPSTUGA (via Matter)
 - Aqara TVOC Air Quality Monitor
@@ -448,8 +535,8 @@ This card works with any sensor that provides entities for CO, Radon, CO2, PM2.5
 ## Development
 
 ```bash
-# Clone the repository
-git clone https://github.com/KadenThomp36/air-quality-card.git
+# Clone your fork
+git clone https://github.com/YOUR_GITHUB_USERNAME/ha-air-quality-card-plus.git
 
 # The card is vanilla JavaScript with no build step required
 # Simply edit air-quality-card.js and test in Home Assistant
@@ -484,6 +571,7 @@ If you find this card useful, consider buying me a coffee!
 
 ## Credits
 
+- Forked from [KadenThomp36/air-quality-card](https://github.com/KadenThomp36/air-quality-card); original work and MIT licence preserved.
 - Thresholds based on [WHO 2021 Air Quality Guidelines](https://www.who.int/publications/i/item/9789240034228)
 - CO2 recommendations based on [ASHRAE Standard 62.1](https://www.ashrae.org/technical-resources/bookstore/standards-62-1-62-2)
 - CO thresholds based on [EPA/WHO carbon monoxide guidelines](https://www.epa.gov/co-pollution)
