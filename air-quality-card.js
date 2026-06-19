@@ -1,12 +1,12 @@
 /**
- * Air Quality Card Plus v2.12.1
+ * Air Quality Card Plus v2.12.2
  * A custom Home Assistant card for air quality visualization
  * Thresholds based on WHO 2021 guidelines and ASHRAE standards
  *
  * https://github.com/KadenThomp36/air-quality-card
  */
 
-const CARD_VERSION = '2.12.1';
+const CARD_VERSION = '2.12.2';
 
 // Shared color palettes for the 5-tier color scale used across metrics.
 const SCALE_AIRQUALITY = ['#4caf50', '#8bc34a', '#ffc107', '#ff9800', '#f44336']; // green → red
@@ -170,8 +170,22 @@ const TRANSLATIONS = {
 };
 
 class AirQualityCard extends HTMLElement {
+  static get elementName() {
+    return 'air-quality-card-plus';
+  }
+
+  static get editorElementName() {
+    return 'air-quality-card-plus-editor';
+  }
+
+  static get yamlType() {
+    return `custom:${this.elementName}`;
+  }
+
   static getConfigElement() {
-    return document.createElement('air-quality-card-editor');
+    const editor = document.createElement(this.editorElementName);
+    editor.cardType = this.yamlType;
+    return editor;
   }
 
   static getStubConfig() {
@@ -2707,7 +2721,7 @@ class AirQualityCard extends HTMLElement {
   }
 
   _setupGraphInteractions() {
-    const graphIds = ['co', 'radon', 'co2', 'pm25', 'pm10', 'pm1', 'pm03', 'pm4', 'hcho', 'tvoc', 'nox', 'humidity', 'temperature', 'pressure'].filter(id => {
+    const graphIds = ['co', 'radon', 'co2', 'pm25', 'pm10', 'pm1', 'pm03', 'pm4', 'no2', 'o3', 'so2', 'hcho', 'tvoc', 'nox', 'humidity', 'temperature', 'pressure'].filter(id => {
       if (id === 'radon') return this._config.radon_entity || this._config.radon_longterm_entity;
       return this._config[`${id}_entity`];
     });
@@ -2855,20 +2869,42 @@ class AirQualityCard extends HTMLElement {
   }
 }
 
-// Register the card
-customElements.define('air-quality-card', AirQualityCard);
+// Register the card. `air-quality-card-plus` is the preferred type for this
+// fork so it can coexist with the upstream card. `air-quality-card` remains as
+// a backwards-compatible alias when no other card has already registered it.
+class AirQualityCardPlus extends AirQualityCard {}
+class AirQualityCardLegacy extends AirQualityCard {
+  static get elementName() {
+    return 'air-quality-card';
+  }
+
+  static get editorElementName() {
+    return 'air-quality-card-editor';
+  }
+}
+
+const defineCustomElement = (name, elementClass) => {
+  if (!customElements.get(name)) {
+    customElements.define(name, elementClass);
+  }
+};
+
+defineCustomElement('air-quality-card-plus', AirQualityCardPlus);
+defineCustomElement('air-quality-card', AirQualityCardLegacy);
 
 window.customCards = window.customCards || [];
-window.customCards.push({
-  type: 'air-quality-card',
-  name: 'Air Quality Card Plus',
-  description: 'A custom air-quality card with gradient graphs plus NO₂, O₃, SO₂, and HCHO ppm support',
-  preview: true,
-  documentationURL: 'https://github.com/KadenThomp36/air-quality-card'
-});
+if (!window.customCards.some(card => card.type === 'air-quality-card-plus')) {
+  window.customCards.push({
+    type: 'air-quality-card-plus',
+    name: 'Air Quality Card Plus',
+    description: 'A custom air-quality card with gradient graphs plus NO₂, O₃, SO₂, and HCHO ppm support',
+    preview: true,
+    documentationURL: 'https://github.com/carjufi/ha-air-quality-card-plus'
+  });
+}
 
 console.info(
-  `%c AIR-QUALITY-CARD %c v${CARD_VERSION} `,
+  `%c AIR-QUALITY-CARD-PLUS %c v${CARD_VERSION} `,
   'color: white; background: #4caf50; font-weight: bold;',
   'color: #4caf50; background: white; font-weight: bold;'
 );
@@ -2884,8 +2920,8 @@ const LitElement = Object.getPrototypeOf(
 const html = LitElement?.prototype?.html;
 const css = LitElement?.prototype?.css;
 
-if (LitElement && !customElements.get('air-quality-card-editor')) {
-  class AirQualityCardEditor extends LitElement {
+if (LitElement && (!customElements.get('air-quality-card-plus-editor') || !customElements.get('air-quality-card-editor'))) {
+  class AirQualityCardEditorBase extends LitElement {
     static get properties() {
       return {
         hass: { type: Object },
@@ -3133,7 +3169,8 @@ if (LitElement && !customElements.get('air-quality-card-editor')) {
     }
 
     _valueChanged(ev) {
-      const newConfig = { type: 'custom:air-quality-card', ...ev.detail.value };
+      const cardType = this.cardType || this._config?.type || ev.detail.value?.type || 'custom:air-quality-card-plus';
+      const newConfig = { ...ev.detail.value, type: cardType };
       // compact_alerts is injected into the form data as default-true; don't
       // persist it to YAML unless the user actually turned it off.
       if (newConfig.compact_alerts === true) delete newConfig.compact_alerts;
@@ -3153,5 +3190,9 @@ if (LitElement && !customElements.get('air-quality-card-editor')) {
     }
   }
 
-  customElements.define('air-quality-card-editor', AirQualityCardEditor);
+  class AirQualityCardPlusEditor extends AirQualityCardEditorBase {}
+  class AirQualityCardLegacyEditor extends AirQualityCardEditorBase {}
+
+  defineCustomElement('air-quality-card-plus-editor', AirQualityCardPlusEditor);
+  defineCustomElement('air-quality-card-editor', AirQualityCardLegacyEditor);
 }

@@ -69,20 +69,22 @@ This is a personalised extension of [KadenThomp36/air-quality-card](https://gith
 
 After adding this fork as a custom HACS repository, install it as a Lovelace plugin and refresh the browser. Do not install the upstream card alongside this fork at the same resource path.
 
+New cards should use `type: custom:air-quality-card-plus`. The older `type: custom:air-quality-card` is still registered as a compatibility alias for existing dashboards, but the explicit Plus type avoids browser custom-element collisions when the upstream card is also installed.
+
 ### Manual Installation
 
 1. Download `air-quality-card.js` from this repository's release or main branch
 2. Copy it to `/config/www/air-quality-card-plus/air-quality-card.js`
 3. Add the resource in Home Assistant:
    - Go to Settings → Dashboards → Resources
-   - Add `/local/air-quality-card-plus/air-quality-card.js?v=2.12.1` as a JavaScript Module
+   - Add `/local/air-quality-card-plus/air-quality-card.js?v=2.12.2` as a JavaScript Module
 
 ## Configuration
 
 ### Using the Visual Editor
 
 1. Add a new card to your dashboard
-2. Search for "Air Quality Card"
+2. Search for "Air Quality Card Plus"
 3. Configure the entities using the visual editor
 4. Primary sensors (CO₂, PM2.5, Humidity, Temperature) are always visible
 5. Expand "Additional Sensors" for Radon, CO, HCHO, tVOC, NOx, NO₂, O₃, SO₂, PM1, PM10, PM4, and PM0.3
@@ -90,8 +92,20 @@ After adding this fork as a custom HACS repository, install it as a Lovelace plu
 
 ### YAML Configuration
 
+Recommended card type:
+
+```yaml
+type: custom:air-quality-card-plus
+```
+
+Compatibility alias for older dashboards:
+
 ```yaml
 type: custom:air-quality-card
+```
+
+```yaml
+type: custom:air-quality-card-plus
 name: Office Air Quality
 co2_entity: sensor.air_quality_co2
 pm25_entity: sensor.air_quality_pm25
@@ -113,7 +127,7 @@ outdoor_pm25_entity: sensor.outdoor_pm25
 `dominant_pollutant_entity` is intentionally text-only: it appears as an informational row under the card header and is never sent to the graph/history pipeline.
 
 ```yaml
-type: custom:air-quality-card
+type: custom:air-quality-card-plus
 name: Barcelona (Eixample) Air Quality
 hours_to_show: 24
 temperature_unit: C
@@ -148,7 +162,7 @@ order:
 ### Indoor HCHO in ppm example
 
 ```yaml
-type: custom:air-quality-card
+type: custom:air-quality-card-plus
 name: Bedroom Air Quality
 hours_to_show: 24
 temperature_unit: C
@@ -256,7 +270,7 @@ Customize which sensors come first on the card. In the visual editor, use the mu
 Valid metric names: `co`, `radon`, `co2`, `pm25`, `pm10`, `pm1`, `pm03`, `pm4`, `hcho`, `tvoc`, `nox`, `no2`, `o3`, `so2`, `humidity`, `temperature`, `pressure`. `dominant_pollutant_entity` is an informational header row, not a graph metric, so it is not included in `order`.
 
 ```yaml
-type: custom:air-quality-card
+type: custom:air-quality-card-plus
 co2_entity: sensor.air_quality_co2
 humidity_entity: sensor.air_quality_humidity
 temperature_entity: sensor.air_quality_temp
@@ -275,7 +289,7 @@ order:
 Surface a one-tap button on the recommendation strip to act on what the card suggests — e.g. turn on an air purifier when it recommends "Run Air Purifier", or run a script. Uses Home Assistant's [standard action](https://www.home-assistant.io/dashboards/actions/) format, so it supports `perform-action`, `toggle`, `navigate`, `url`, `more-info`, etc. The button appears only when there's an actionable recommendation (hidden when air quality is "All Good").
 
 ```yaml
-type: custom:air-quality-card
+type: custom:air-quality-card-plus
 co2_entity: sensor.air_quality_co2
 pm25_entity: sensor.air_quality_pm25
 recommendation_action:
@@ -294,7 +308,7 @@ For overview dashboards where you want a small "go to the air quality page" indi
 When any sensor reads outside its normal range, small colored **alert chips** appear next to the badge naming the offenders (most severe first — CO and radon always lead — capped at 4 plus a `+N` overflow pill) — so a yellow badge tells you *what* is off without expanding. Set `compact_alerts: false` to turn the chips off. Atmospheric pressure never produces a chip or triggers auto-expand: it's informational, not an air-quality hazard.
 
 ```yaml
-type: custom:air-quality-card
+type: custom:air-quality-card-plus
 name: Air Quality
 co2_entity: sensor.air_quality_co2
 pm25_entity: sensor.air_quality_pm25
@@ -314,7 +328,7 @@ Compact mode:
 `display: expandable` starts as a compact summary and expands to the full card (graphs and details) when tapped — best of both worlds for space-constrained dashboards. A chevron indicates the toggle; tap the header again to collapse. History is fetched lazily the first time you expand.
 
 ```yaml
-type: custom:air-quality-card
+type: custom:air-quality-card-plus
 name: Air Quality
 co2_entity: sensor.air_quality_co2
 pm25_entity: sensor.air_quality_pm25
@@ -326,7 +340,7 @@ In expandable mode the tap gesture is reserved for expand/collapse, so `tap_acti
 Add `auto_expand: true` to let the card manage itself: it expands automatically while any sensor reads out of range and collapses once readings have stayed normal for 5 minutes (the delay prevents flapping when a sensor hovers at a threshold). A manual tap takes over (the card stops auto-toggling until it is re-created, e.g. a page reload or dashboard edit), so the automation never fights you.
 
 ```yaml
-type: custom:air-quality-card
+type: custom:air-quality-card-plus
 co2_entity: sensor.air_quality_co2
 pm25_entity: sensor.air_quality_pm25
 display: expandable
@@ -338,7 +352,7 @@ auto_expand: true
 The default thresholds follow WHO 2021 / ASHRAE / EPA guidelines, but you can override any of them. Provide an array of **4 ascending numbers** — these become the 5-tier boundaries (Excellent / Good / Moderate / Elevated / Poor for most metrics; see [Health Thresholds](#health-thresholds) for the labels per metric).
 
 ```yaml
-type: custom:air-quality-card
+type: custom:air-quality-card-plus
 temperature_entity: sensor.living_room_temp
 temperature_unit: C
 # In tropical climates, 26-29 °C is comfortable AC territory
@@ -378,7 +392,7 @@ If you're using the card to monitor **only outdoor air quality** (e.g., a weathe
 - **Hide the recommendation strip** — actions like "Open Window" or "Run Air Purifier" don't apply to ambient air
 
 ```yaml
-type: custom:air-quality-card
+type: custom:air-quality-card-plus
 name: Outdoor Air Quality
 outdoor_pm25_entity: sensor.outdoor_pm25
 outdoor_pm10_entity: sensor.outdoor_pm10

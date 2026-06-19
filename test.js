@@ -1,5 +1,5 @@
 /**
- * Air Quality Card Plus v2.12.1 — Unit Tests
+ * Air Quality Card Plus v2.12.2 — Unit Tests
  * Run with: node test.js
  *
  * Tests color functions, recommendation waterfall, config validation,
@@ -56,8 +56,13 @@ const mockCustomElements = {
 global.HTMLElement = MockHTMLElement;
 global.customElements = mockCustomElements;
 global.window = { customCards: [] };
-global.document = { createElement: () => ({}) };
-global.CustomEvent = class CustomEvent {};
+global.document = { createElement: (name) => ({ localName: name }) };
+global.CustomEvent = class CustomEvent {
+  constructor(type, options = {}) {
+    this.type = type;
+    Object.assign(this, options);
+  }
+};
 global.console = { ...console, info: () => {} }; // suppress banner
 
 // Load the card
@@ -66,6 +71,11 @@ require('./air-quality-card.js');
 const CardClass = registeredElements['air-quality-card'];
 if (!CardClass) {
   console.error('FATAL: AirQualityCard class not registered');
+  process.exit(1);
+}
+const PlusCardClass = registeredElements['air-quality-card-plus'];
+if (!PlusCardClass) {
+  console.error('FATAL: AirQualityCardPlus class not registered');
   process.exit(1);
 }
 
@@ -1464,10 +1474,20 @@ section('Editor Structure');
 
 // Card should have getConfigElement
 assert(typeof CardClass.getConfigElement === 'function', 'getConfigElement exists');
+assert(typeof PlusCardClass.getConfigElement === 'function', 'plus getConfigElement exists');
+assert(PlusCardClass.yamlType === 'custom:air-quality-card-plus', 'plus card has explicit YAML type');
+assert(CardClass.yamlType === 'custom:air-quality-card', 'legacy card keeps original YAML type');
+assert(PlusCardClass.getConfigElement().localName === 'air-quality-card-plus-editor', 'plus card uses plus editor');
+assert(PlusCardClass.getConfigElement().cardType === 'custom:air-quality-card-plus', 'plus editor receives plus card type');
+assert(CardClass.getConfigElement().localName === 'air-quality-card-editor', 'legacy card uses legacy editor');
 
 // Editor class should be registered
-const EditorClass = registeredElements['air-quality-card-editor'];
-assert(EditorClass !== undefined, 'Editor custom element registered');
+const EditorClass = registeredElements['air-quality-card-plus-editor'];
+const LegacyEditorClass = registeredElements['air-quality-card-editor'];
+assert(EditorClass !== undefined, 'Plus editor custom element registered');
+assert(LegacyEditorClass !== undefined, 'Legacy editor custom element registered');
+assert(window.customCards.some(card => card.type === 'air-quality-card-plus' && card.name === 'Air Quality Card Plus'), 'plus card is advertised to the HA card picker');
+assert(window.customCards.some(card => card.type === 'air-quality-card-plus' && card.documentationURL.includes('carjufi/ha-air-quality-card-plus')), 'plus card documentation points to this fork');
 
 // Test editor schema and labels
 const editor = new EditorClass();
@@ -1475,6 +1495,19 @@ editor.setConfig({ co2_entity: 'sensor.co2' });
 const schema = editor._schema();
 assert(schema && schema.length > 0, 'Editor schema exists');
 assert(typeof editor._computeLabel === 'function', 'computeLabel is a function');
+let changedEvent = null;
+editor.cardType = 'custom:air-quality-card-plus';
+editor.dispatchEvent = (event) => { changedEvent = event; };
+editor._valueChanged({ detail: { value: { co2_entity: 'sensor.co2', compact_alerts: true } } });
+assert(changedEvent.detail.config.type === 'custom:air-quality-card-plus', 'plus editor emits plus YAML type');
+assert(changedEvent.detail.config.compact_alerts === undefined, 'plus editor omits default compact_alerts true');
+
+const legacyEditor = new LegacyEditorClass();
+legacyEditor.setConfig({ type: 'custom:air-quality-card', co2_entity: 'sensor.co2' });
+let legacyChangedEvent = null;
+legacyEditor.dispatchEvent = (event) => { legacyChangedEvent = event; };
+legacyEditor._valueChanged({ detail: { value: { co2_entity: 'sensor.co2' } } });
+assert(legacyChangedEvent.detail.config.type === 'custom:air-quality-card', 'legacy editor preserves legacy YAML type');
 
 // Check all expected labels exist
 const allLabels = [
@@ -1513,6 +1546,35 @@ assert(outdoorSection.flatten === true, 'Outdoor Sensors has flatten: true');
 const advancedSection = findExpandable(schema, 'Advanced');
 assert(advancedSection !== null, 'Advanced expandable exists');
 assert(advancedSection.flatten === true, 'Advanced has flatten: true');
+
+section('New pollutant graph interactions');
+const interactionCard = new CardClass();
+interactionCard._config = {
+  no2_entity: 'sensor.no2',
+  o3_entity: 'sensor.o3',
+  so2_entity: 'sensor.so2'
+};
+const interactionElementIds = [];
+const interactionListeners = [];
+interactionCard.shadowRoot = {
+  getElementById(id) {
+    interactionElementIds.push(id);
+    return {
+      dataset: {},
+      style: { setProperty() {} },
+      addEventListener(type) {
+        interactionListeners.push(`${id}:${type}`);
+      }
+    };
+  }
+};
+interactionCard._setupGraphInteractions();
+assert(interactionElementIds.includes('no2-graph-container'), 'NO₂ graph interactions are wired');
+assert(interactionElementIds.includes('o3-graph-container'), 'O₃ graph interactions are wired');
+assert(interactionElementIds.includes('so2-graph-container'), 'SO₂ graph interactions are wired');
+assert(interactionListeners.includes('no2-graph-container:click'), 'NO₂ graph tap opens more-info');
+assert(interactionListeners.includes('o3-graph:mousemove'), 'O₃ graph hover is wired');
+assert(interactionListeners.includes('so2-graph:touchstart'), 'SO₂ graph touch is wired');
 
 // ============================================================
 // HISTORY KEYS TEST
