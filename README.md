@@ -15,8 +15,10 @@ This is a personalised extension of [KadenThomp36/air-quality-card](https://gith
 - [Configuration](#configuration)
   - [Using the Visual Editor](#using-the-visual-editor)
   - [YAML Configuration](#yaml-configuration)
-  - [Barcelona Eixample (WAQI) example](#barcelona-eixample-waqi-example)
-  - [Indoor HCHO in ppm example](#indoor-hcho-in-ppm-example)
+  - [Basic Indoor Example](#basic-indoor-example)
+  - [Indoor + Outdoor Comparison Example](#indoor--outdoor-comparison-example)
+  - [Outdoor Station Example](#outdoor-station-example)
+  - [Indoor HCHO in ppm Example](#indoor-hcho-in-ppm-example)
   - [Configuration Options](#configuration-options)
   - [Air Quality Index entity](#air-quality-index-entity)
   - [Sensor Order](#sensor-order)
@@ -25,11 +27,13 @@ This is a personalised extension of [KadenThomp36/air-quality-card](https://gith
   - [Compact Chart Height](#compact-chart-height)
   - [Expandable Display Mode](#expandable-display-mode)
   - [Custom Thresholds](#custom-thresholds)
+  - [Units and Conversions](#units-and-conversions)
   - [Language](#language)
   - [Outdoor Sensors](#outdoor-sensors)
   - [Outdoor-Only Mode](#outdoor-only-mode)
 - [Built-in Recommendations](#built-in-recommendations)
 - [Health Thresholds](#health-thresholds)
+  - [Live Outdoor Pollutant Bands and Sources](#live-outdoor-pollutant-bands-and-sources)
   - [CO (Carbon Monoxide)](#co-carbon-monoxide)
   - [Radon](#radon)
   - [CO2 (Carbon Dioxide)](#co2-carbon-dioxide)
@@ -58,7 +62,7 @@ This is a personalised extension of [KadenThomp36/air-quality-card](https://gith
 - **Radon advisory banner** -- separate long-term health advisory with EPA/WHO thresholds (supports pCi/L and Bq/m3)
 - **Gradient-colored graphs** that change color based on air quality levels
 - **Interactive hover/touch** to see historical values at any point
-- **Health-based thresholds** following WHO 2021 guidelines and ASHRAE standards
+- **Source-documented status bands** — EEA hourly bands for live ambient concentrations, WHO/EPA reference values for recommendations, and explicit AQI handling for WAQI entities
 - **Actionable recommendations** like "Open Window" or "Run Air Purifier"
 - **Outdoor sensor comparison** - optional dashed line overlay with smart ventilation recommendations
 - **Shared indoor/outdoor legend** - one compact footer key explains solid indoor and dashed outdoor lines without adding height to every graph
@@ -81,7 +85,7 @@ New cards should use `type: custom:air-quality-card-plus`. The older `type: cust
 2. Copy it to `/config/www/air-quality-card-plus/air-quality-card.js`
 3. Add the resource in Home Assistant:
    - Go to Settings → Dashboards → Resources
-   - Add `/local/air-quality-card-plus/air-quality-card.js?v=2.12.5` as a JavaScript Module
+   - Add `/local/air-quality-card-plus/air-quality-card.js?v=2.13.0` as a JavaScript Module
 
 ## Configuration
 
@@ -126,30 +130,84 @@ outdoor_co2_entity: sensor.outdoor_co2
 outdoor_pm25_entity: sensor.outdoor_pm25
 ```
 
-### Barcelona Eixample (WAQI) example
+### Basic Indoor Example
+
+Use this as a starting point for a typical indoor sensor. You can remove any unavailable entity; the card does not require a fixed sensor set.
+
+```yaml
+type: custom:air-quality-card-plus
+name: Living Room Air Quality
+hours_to_show: 24
+temperature_unit: C
+language: auto
+compact_charts: true
+
+co2_entity: sensor.living_room_co2
+pm25_entity: sensor.living_room_pm25
+hcho_entity: sensor.living_room_formaldehyde
+hcho_unit: auto
+tvoc_entity: sensor.living_room_tvoc
+humidity_entity: sensor.living_room_humidity
+temperature_entity: sensor.living_room_temperature
+```
+
+### Indoor + Outdoor Comparison Example
+
+Outdoor values render as a dashed line over the matching indoor graph. The recommendation strip becomes outdoor-aware: if outside air is unsuitable for ventilation, it says **Keep Windows Closed** and identifies the strongest outdoor reason without adding another panel to the card.
 
 `dominant_pollutant_entity` is intentionally text-only: it appears as an informational row under the card header and is never sent to the graph/history pipeline.
 
 ```yaml
 type: custom:air-quality-card-plus
-name: Barcelona (Eixample) Air Quality
+name: Home + Outdoor Air Quality
 hours_to_show: 24
 temperature_unit: C
-language: auto
+compact_charts: true
 
-air_quality_entity: sensor.barcelona_eixample_catalunya_spain_air_quality_index
-dominant_pollutant_entity: sensor.barcelona_eixample_catalunya_spain_dominant_pollutant
+co2_entity: sensor.living_room_co2
+pm25_entity: sensor.living_room_pm25
+hcho_entity: sensor.living_room_formaldehyde
+hcho_unit: auto
+humidity_entity: sensor.living_room_humidity
+temperature_entity: sensor.living_room_temperature
 
-pm25_entity: sensor.barcelona_eixample_catalunya_spain_pm2_5
-pm10_entity: sensor.barcelona_eixample_catalunya_spain_pm10
-no2_entity: sensor.barcelona_eixample_catalunya_spain_nitrogen_dioxide
-o3_entity: sensor.barcelona_eixample_catalunya_spain_ozone
-so2_entity: sensor.barcelona_eixample_catalunya_spain_sulphur_dioxide
-co_entity: sensor.barcelona_eixample_catalunya_spain_carbon_monoxide
+air_quality_entity: sensor.local_air_quality_index
+dominant_pollutant_entity: sensor.outdoor_dominant_pollutant
 
-humidity_entity: sensor.barcelona_eixample_catalunya_spain_humidity
-temperature_entity: sensor.barcelona_eixample_catalunya_spain_temperature
-pressure_entity: sensor.barcelona_eixample_catalunya_spain_pressure
+outdoor_pm25_entity: sensor.outdoor_pm25
+outdoor_pm10_entity: sensor.outdoor_pm10
+outdoor_no2_entity: sensor.outdoor_nitrogen_dioxide
+outdoor_o3_entity: sensor.outdoor_ozone
+outdoor_so2_entity: sensor.outdoor_sulphur_dioxide
+outdoor_co_entity: sensor.outdoor_carbon_monoxide
+outdoor_humidity_entity: sensor.outdoor_humidity
+outdoor_temperature_entity: sensor.outdoor_temperature
+outdoor_pressure_entity: sensor.outdoor_pressure
+```
+
+### Outdoor Station Example
+
+For a dedicated outdoor card, use the normal metric keys. The card then treats those readings as its primary data and does not show indoor actions such as opening windows or running a purifier.
+
+```yaml
+type: custom:air-quality-card-plus
+name: Neighbourhood Air Quality
+hours_to_show: 24
+temperature_unit: C
+compact_charts: true
+
+air_quality_entity: sensor.outdoor_air_quality_index
+dominant_pollutant_entity: sensor.outdoor_dominant_pollutant
+
+pm25_entity: sensor.outdoor_pm25
+pm10_entity: sensor.outdoor_pm10
+no2_entity: sensor.outdoor_nitrogen_dioxide
+o3_entity: sensor.outdoor_ozone
+so2_entity: sensor.outdoor_sulphur_dioxide
+co_entity: sensor.outdoor_carbon_monoxide
+humidity_entity: sensor.outdoor_humidity
+temperature_entity: sensor.outdoor_temperature
+pressure_entity: sensor.outdoor_pressure
 
 order:
   - pm25
@@ -163,7 +221,7 @@ order:
   - pressure
 ```
 
-### Indoor HCHO in ppm example
+### Indoor HCHO in ppm Example
 
 ```yaml
 type: custom:air-quality-card-plus
@@ -173,16 +231,16 @@ temperature_unit: C
 radon_unit: auto
 language: auto
 
-co2_entity: sensor.bedroom_air_sensor_carbon_dioxide
-pm25_entity: sensor.bedroom_air_sensor_pm2_5
-hcho_entity: sensor.bedroom_air_sensor_formaldehyde_concentration
+co2_entity: sensor.bedroom_co2
+pm25_entity: sensor.bedroom_pm25
+hcho_entity: sensor.bedroom_formaldehyde
 hcho_unit: ppm
-tvoc_entity: sensor.bedroom_air_sensor_volatile_organic_compounds
+tvoc_entity: sensor.bedroom_tvoc
 
-humidity_entity: sensor.bedroom_sensor_humidity
-temperature_entity: sensor.bedroom_sensor_temperature
-outdoor_humidity_entity: sensor.outdoor_sensor_humidity
-outdoor_temperature_entity: sensor.outdoor_sensor_temperature
+humidity_entity: sensor.bedroom_humidity
+temperature_entity: sensor.bedroom_temperature
+outdoor_humidity_entity: sensor.outdoor_humidity
+outdoor_temperature_entity: sensor.outdoor_temperature
 
 show_min_max: false
 tvoc_unit: auto
@@ -230,16 +288,16 @@ compact_charts: true
 | `hold_action` | action | No | - | Same as `tap_action` but fired after holding for ~500 ms |
 | `double_tap_action` | action | No | - | Same as `tap_action` but fired on double-tap |
 | `recommendation_action` | action | No | - | Standard HA action surfaced as a one-tap button on the recommendation strip (e.g. toggle a purifier/fan, or run a script). Shown only when there's an actionable recommendation |
-| `co_thresholds` | array | No | `[4, 9, 35, 100]` | Custom CO color/status thresholds (4 ascending numbers defining 5 tiers) |
+| `co_thresholds` | array | No | `[4, 9, 35, 100]` ppm / `[50, 100, 150, 200]` for detected WAQI AQI | Custom CO color/status thresholds (4 ascending numbers defining 5 tiers) |
 | `co2_thresholds` | array | No | `[600, 800, 1000, 1500]` | Custom CO₂ color/status thresholds |
-| `pm25_thresholds` | array | No | `[5, 15, 25, 35]` | Custom PM2.5 thresholds |
-| `pm10_thresholds` | array | No | `[15, 45, 75, 150]` | Custom PM10 thresholds |
+| `pm25_thresholds` | array | No | `[5, 15, 50, 90]` µg/m³ / `[50, 100, 150, 200]` for detected WAQI AQI | Custom PM2.5 thresholds |
+| `pm10_thresholds` | array | No | `[15, 45, 120, 195]` µg/m³ / `[50, 100, 150, 200]` for detected WAQI AQI | Custom PM10 thresholds |
 | `pm1_thresholds` | array | No | `[5, 15, 25, 35]` | Custom PM1 thresholds |
 | `pm03_thresholds` | array | No | `[500, 1000, 3000, 5000]` | Custom PM0.3 thresholds |
 | `pm4_thresholds` | array | No | `[10, 25, 37.5, 50]` | Custom PM4 thresholds |
-| `no2_thresholds` | array | No | `[10, 25, 50, 100]` | Custom NO₂ thresholds (default unit µg/m³) |
-| `o3_thresholds` | array | No | `[50, 100, 120, 180]` | Custom O₃ thresholds (default unit µg/m³) |
-| `so2_thresholds` | array | No | `[20, 40, 75, 125]` | Custom SO₂ thresholds (default unit µg/m³) |
+| `no2_thresholds` | array | No | `[10, 25, 60, 100]` µg/m³ / `[50, 100, 150, 200]` for detected WAQI AQI | Custom NO₂ thresholds |
+| `o3_thresholds` | array | No | `[60, 100, 120, 160]` µg/m³ / `[50, 100, 150, 200]` for detected WAQI AQI | Custom O₃ thresholds |
+| `so2_thresholds` | array | No | `[20, 40, 125, 190]` µg/m³ / `[50, 100, 150, 200]` for detected WAQI AQI | Custom SO₂ thresholds |
 | `hcho_thresholds` | array | No | `[20, 50, 100, 200]` ppb / `[0.020, 0.050, 0.100, 0.200]` ppm | Custom HCHO thresholds in the selected `hcho_unit` |
 | `tvoc_thresholds` | array | No | mode-dependent | Custom tVOC thresholds (units depend on `tvoc_unit`) |
 | `nox_thresholds` | array | No | mode-dependent | Custom NOx thresholds (units depend on `nox_unit`; defaults `[20, 53, 100, 360]` ppb / `[5, 20, 150, 300]` index) |
@@ -372,7 +430,7 @@ auto_expand: true
 
 ### Custom Thresholds
 
-The default thresholds follow WHO 2021 / ASHRAE / EPA guidelines, but you can override any of them. Provide an array of **4 ascending numbers** — these become the 5-tier boundaries (Excellent / Good / Moderate / Elevated / Poor for most metrics; see [Health Thresholds](#health-thresholds) for the labels per metric).
+The defaults use a mixture of EEA live-air bands, WHO reference values, and comfort guidance; see [Health Thresholds](#health-thresholds). You can override any threshold set. Provide an array of **4 ascending numbers** — these become the 5-tier boundaries (see the metric tables for labels).
 
 ```yaml
 type: custom:air-quality-card-plus
@@ -380,14 +438,30 @@ temperature_entity: sensor.living_room_temp
 temperature_unit: C
 # In tropical climates, 26-29 °C is comfortable AC territory
 temperature_thresholds: [22, 25, 28, 31]
-# Stricter PM2.5 expectations than WHO 24h guideline
+# Stricter PM2.5 dashboard bands, in this sensor's reported unit
 pm25_thresholds: [3, 8, 15, 25]
 ```
 
 Notes:
-- All custom thresholds are in the same unit as your sensor reports. For HCHO, they are in the selected `hcho_unit`; the card converts ppm to internal ppb values before calculating status colors. For radon, the thresholds are always in **Bq/m³** — the card converts your sensor value before comparison.
+- Custom thresholds are in the displayed/source unit. For HCHO, they are in the selected `hcho_unit`; the card converts ppm to internal ppb values before calculating status colors. For radon, the thresholds are always in **Bq/m³** — the card converts your sensor value before comparison.
+- A detected WAQI entity uses an **individual AQI** by default. If you override its thresholds, enter AQI boundaries, not concentrations.
 - Invalid thresholds (wrong length, non-numeric, etc.) silently fall back to the defaults. No errors thrown.
 - Colors are not customizable — only the boundaries between them.
+
+### Units and Conversions
+
+The card always displays the unit supplied by the selected Home Assistant entity. Built-in default bands for PM2.5, PM10, NO₂, O₃, and SO₂ are defined in **µg/m³** and are converted before status/colour calculation when Home Assistant reports a supported alternative:
+
+- `mg/m³` is converted to `µg/m³`.
+- For NO₂, O₃, and SO₂, `ppb` is converted at 25 °C and 1013 mbar using 1.88, 1.96, and 2.62 µg/m³ per ppb respectively.
+- A mixed indoor/outdoor graph converts supported concentration pairs to the unit of its primary line, so its line, axis, tooltip, current-value suffix, and colour tiers stay aligned.
+- If the two sources do not have a safely compatible concentration unit, they are not drawn on the same graph. Their current values still appear with their own units.
+
+#### WAQI entities are AQI, not concentrations
+
+The official Home Assistant WAQI integration forwards WAQI's `iaqi.*.v` field. WAQI describes these as **individual AQI** values, and the HA integration does not attach a physical unit to the pollutant entities. The card detects the WAQI attribution automatically and displays `AQI` rather than inventing `ppm` or `µg/m³`.
+
+For example, a WAQI CO value of `0.1` is shown as `0 AQI` (rounded for display), **not** `0.1 ppm`; it cannot be converted to a CO concentration. A WAQI PM2.5 value of `38` is `PM2.5 AQI 38`, not `38 µg/m³`. Detected WAQI values use common AQI bands `[50, 100, 150, 200]`, and they are not overlaid on an indoor physical-concentration graph. This prevents a visually tidy but scientifically false comparison. WAQI's API calls these “individual AQI” values; the HA source code forwards them directly. [WAQI API](https://aqicn.org/api/waqi.info) and [Home Assistant WAQI source](https://github.com/home-assistant/core/blob/dev/homeassistant/components/waqi/sensor.py).
 
 ### Language
 
@@ -405,46 +479,45 @@ Configure outdoor sensor entities to see a **dashed comparison line** on each gr
 - Hovering shows both indoor and outdoor values
 - Current outdoor values appear next to indoor readings
 - One compact card-footer legend explains the line styles: solid = indoor, dashed = outdoor
-- **Smart recommendations** avoid suggesting ventilation when outdoor air is worse (e.g., "Keep Windows Closed" instead of "Open Window")
+- **Outdoor-aware recommendations** avoid suggesting ventilation when outdoor air is unsuitable (e.g., "Keep Windows Closed" instead of "Open Window") and identify the strongest outdoor reason in the existing recommendation strip
 
 If you configure an outdoor entity without the matching indoor entity on the same mixed indoor card, it still renders as its own graph with a dashed line. The shared footer legend still identifies it as outdoor, without spending a line of height in that graph.
 
-For Barcelona / WAQI, use the normal metric keys on a dedicated outdoor card, and use the `outdoor_*` keys when overlaying Barcelona readings on an indoor card:
+Use `outdoor_no2_entity` for a direct nitrogen dioxide measurement. `outdoor_nox_entity` remains available for aggregate NOx or Sensirion NOx Index sensors, but it displays as NOx rather than NO₂.
+
+For any compatible outdoor concentration source, use the `outdoor_*` keys on an indoor card:
 
 ```yaml
 type: custom:air-quality-card-plus
-name: Bedroom + Barcelona Outdoor
+name: Bedroom + Outdoor Air Quality
 compact_charts: true
 
-co2_entity: sensor.bedroom_air_sensor_carbon_dioxide
-pm25_entity: sensor.bedroom_air_sensor_pm2_5
-hcho_entity: sensor.bedroom_air_sensor_formaldehyde_concentration
-tvoc_entity: sensor.bedroom_air_sensor_volatile_organic_compounds
-humidity_entity: sensor.bedroom_sensor_humidity
-temperature_entity: sensor.bedroom_sensor_temperature
+co2_entity: sensor.bedroom_co2
+pm25_entity: sensor.bedroom_pm25
+hcho_entity: sensor.bedroom_formaldehyde
+tvoc_entity: sensor.bedroom_tvoc
+humidity_entity: sensor.bedroom_humidity
+temperature_entity: sensor.bedroom_temperature
 
-outdoor_pm25_entity: sensor.barcelona_eixample_catalunya_spain_pm2_5
-outdoor_pm10_entity: sensor.barcelona_eixample_catalunya_spain_pm10
-outdoor_no2_entity: sensor.barcelona_eixample_catalunya_spain_nitrogen_dioxide
-outdoor_o3_entity: sensor.barcelona_eixample_catalunya_spain_ozone
-outdoor_so2_entity: sensor.barcelona_eixample_catalunya_spain_sulphur_dioxide
-outdoor_co_entity: sensor.barcelona_eixample_catalunya_spain_carbon_monoxide
-outdoor_humidity_entity: sensor.barcelona_eixample_catalunya_spain_humidity
-outdoor_temperature_entity: sensor.barcelona_eixample_catalunya_spain_temperature
-outdoor_pressure_entity: sensor.barcelona_eixample_catalunya_spain_pressure
-
-air_quality_entity: sensor.barcelona_eixample_catalunya_spain_air_quality_index
-dominant_pollutant_entity: sensor.barcelona_eixample_catalunya_spain_dominant_pollutant
+outdoor_pm25_entity: sensor.outdoor_pm25
+outdoor_pm10_entity: sensor.outdoor_pm10
+outdoor_no2_entity: sensor.outdoor_nitrogen_dioxide
+outdoor_o3_entity: sensor.outdoor_ozone
+outdoor_so2_entity: sensor.outdoor_sulphur_dioxide
+outdoor_co_entity: sensor.outdoor_carbon_monoxide
+outdoor_humidity_entity: sensor.outdoor_humidity
+outdoor_temperature_entity: sensor.outdoor_temperature
+outdoor_pressure_entity: sensor.outdoor_pressure
 ```
 
-Use `outdoor_no2_entity` for Barcelona nitrogen dioxide. `outdoor_nox_entity` remains available for aggregate NOx or Sensirion NOx Index sensors, but it will display as NOx rather than NO₂.
+For a WAQI source, use the same keys, but remember its pollutant values are individual AQI values. On a mixed card, the card shows their current `AQI` values beside your indoor concentration, but deliberately does not draw the incompatible lines over one another. A dedicated outdoor card works especially well for a station-wide WAQI view.
 
 ### Outdoor-Only Mode
 
 If you're using the card to monitor **only outdoor air quality** (e.g., a weather station or DIY ESPHome ambient sensor), you can configure just the `outdoor_*_entity` options. The card will:
 
 - Render outdoor entities as primary graph lines
-- Compute the status badge from the outdoor values using the same WHO thresholds
+- Compute the status badge from the outdoor values using the appropriate concentration or detected WAQI AQI bands
 - **Hide the recommendation strip** — actions like "Open Window" or "Run Air Purifier" don't apply to ambient air
 
 ```yaml
@@ -457,15 +530,46 @@ outdoor_temperature_entity: sensor.outdoor_temperature
 
 ## Built-in Recommendations
 
-The card automatically generates actionable recommendations based on your sensor readings -- no template sensors needed. It evaluates CO, CO2, PM2.5, PM10, HCHO, tVOC, and humidity levels, and when outdoor sensors are configured, it avoids suggesting ventilation when outdoor air is worse.
+The card automatically generates actionable recommendations based on your sensor readings -- no template sensors needed. It evaluates CO, CO2, PM2.5, PM10, HCHO, tVOC, and humidity levels. When outdoor sensors are configured, it avoids suggesting ventilation when outdoor air is unsuitable.
 
-**CO safety alerts** are always shown regardless of outdoor conditions -- carbon monoxide is a life-safety concern. If CO exceeds dangerous levels, the card shows a critical red warning with instructions to leave the area.
+If an outdoor concentration crosses a conservative short-term ventilation guardrail, or the outside temperature would make an already-hot/cold room less comfortable, the existing recommendation strip says **Keep Windows Closed** and names the reason — for example, `Outdoor PM2.5: 38.0 µg/m³ (Moderate)` or `Outdoor 29 °C is warmer than indoors`. It does not add another card section.
+
+| Outdoor signal | Concentration guardrail | Basis |
+|---|---:|---|
+| PM2.5 | 15 µg/m³ | WHO 24-hour AQG |
+| PM10 | 45 µg/m³ | WHO 24-hour AQG |
+| NO₂ | 25 µg/m³ | WHO 24-hour AQG |
+| O₃ | 100 µg/m³ | WHO 8-hour AQG |
+| SO₂ | 40 µg/m³ | WHO 24-hour AQG |
+| CO | 9 ppm | EPA 8-hour standard |
+| Detected WAQI pollutant | AQI 50 | Start of the moderate AQI band |
+
+These are real-time decision aids, not compliance determinations: a live point is not automatically the same as an 8- or 24-hour regulatory average. Indoor CO safety alerts always take priority over a window recommendation.
+
+**CO safety alerts** from a physical ppm CO sensor are always shown regardless of outdoor conditions -- carbon monoxide is a life-safety concern. If CO exceeds dangerous levels, the card shows a critical red warning with instructions to leave the area. A WAQI CO state is an AQI, not an indoor CO concentration, so it never triggers this life-safety alarm.
 
 **Radon advisory banner** appears as a separate element below the main recommendation when radon levels are elevated. Unlike other pollutants, radon changes over days/weeks and requires professional mitigation (not "open a window"), so it uses its own advisory system instead of the main recommendation waterfall. The advisory shows at three levels: informational (approaching action level), warning (above EPA action level of 4.0 pCi/L / 148 Bq/m3), and danger (significantly elevated, mitigation needed).
 
 ## Health Thresholds
 
+### Live Outdoor Pollutant Bands and Sources
+
+For physical-concentration entities, PM2.5, PM10, NO₂, O₃, and SO₂ use the [European Air Quality Index](https://airindex.eea.europa.eu/AQI/index.html)'s **hourly** bands. The EEA has six categories; this five-colour card combines its final “very poor” and “extremely poor” categories into **Very Poor**. The table below gives the four card boundaries; the ranges are applied as `< boundary`, so the next tier begins at the listed value.
+
+| Pollutant | Card concentration boundaries | Card labels | WHO 2021 reference values and averaging time | Source |
+|---|---:|---|---|---|
+| PM2.5 | `[5, 15, 50, 90]` µg/m³ | Good / Fair / Moderate / Poor / Very Poor | 5 annual; 15 24-hour | [EEA AQI](https://airindex.eea.europa.eu/AQI/index.html), [WHO AQG](https://www.who.int/news-room/questions-and-answers/item/who-global-air-quality-guidelines) |
+| PM10 | `[15, 45, 120, 195]` µg/m³ | Good / Fair / Moderate / Poor / Very Poor | 15 annual; 45 24-hour | [EEA AQI](https://airindex.eea.europa.eu/AQI/index.html), [WHO AQG](https://www.who.int/news-room/questions-and-answers/item/who-global-air-quality-guidelines) |
+| NO₂ | `[10, 25, 60, 100]` µg/m³ | Good / Fair / Moderate / Poor / Very Poor | 10 annual; 25 24-hour | [EEA AQI](https://airindex.eea.europa.eu/AQI/index.html), [WHO AQG](https://www.who.int/news-room/questions-and-answers/item/who-global-air-quality-guidelines) |
+| O₃ | `[60, 100, 120, 160]` µg/m³ | Good / Fair / Moderate / Poor / Very Poor | 60 peak-season daily max 8-hour; 100 8-hour | [EEA AQI](https://airindex.eea.europa.eu/AQI/index.html), [WHO AQG](https://www.who.int/news-room/questions-and-answers/item/who-global-air-quality-guidelines) |
+| SO₂ | `[20, 40, 125, 190]` µg/m³ | Good / Fair / Moderate / Poor / Very Poor | 40 24-hour | [EEA AQI](https://airindex.eea.europa.eu/AQI/index.html), [WHO AQG](https://www.who.int/news-room/questions-and-answers/item/who-global-air-quality-guidelines) |
+
+The EEA bands are useful for a **live dashboard colour/status**. WHO values are health-protective exposure guidelines with explicit averaging windows, not an instruction to treat one instantaneous point as a legal exceedance. The recommendation strip deliberately uses the WHO short-term values as conservative ventilation guardrails.
+
+Detected WAQI pollutant entities are a different data type: they use the common individual-AQI boundaries `[50, 100, 150, 200]` and display `AQI`. WAQI calls its `iaqi` values individual AQI; it does not provide the physical unit needed to apply the concentration table above. See [Units and Conversions](#units-and-conversions).
+
 ### CO (Carbon Monoxide)
+For a physical CO entity reported in ppm:
 | Level | Range | Color | Meaning |
 |-------|-------|-------|---------|
 | Safe | < 4 ppm | Green | Normal background levels |
@@ -473,6 +577,8 @@ The card automatically generates actionable recommendations based on your sensor
 | Moderate | 9-35 ppm | Yellow | Improve ventilation |
 | High | 35-100 ppm | Orange | Ventilate immediately |
 | Dangerous | > 100 ppm | Red | Leave area immediately |
+
+The EPA primary standards are 9 ppm over 8 hours and 35 ppm over 1 hour. The card's five display bands are operational guidance around those values, not a substitute for a certified CO alarm or emergency advice. A detected WAQI CO entity is an individual AQI and uses the separate AQI bands instead of this table. [EPA CO standards](https://www.epa.gov/co-pollution/timeline-carbon-monoxide-co-national-ambient-air-quality-standards-naaqs).
 
 ### Radon
 Based on EPA and WHO guidelines:
@@ -494,26 +600,27 @@ Based on EPA and WHO guidelines:
 | Poor | > 1500 ppm | Red | Ventilation needed |
 
 ### PM2.5 (Fine Particulate Matter)
-Based on WHO 2021 Air Quality Guidelines:
+Physical-concentration entities use the EEA hourly display bands; WHO annual/24-hour reference values are in [Live Outdoor Pollutant Bands and Sources](#live-outdoor-pollutant-bands-and-sources).
 | Level | Range | Color | Meaning |
 |-------|-------|-------|---------|
-| Excellent | < 5 µg/m³ | Green | WHO annual guideline |
-| Good | 5-15 µg/m³ | Light Green | WHO 24-hour guideline |
-| Moderate | 15-25 µg/m³ | Yellow | Slightly elevated |
-| Elevated | 25-35 µg/m³ | Orange | Consider air purifier |
-| Poor | > 35 µg/m³ | Red | Air purifier recommended |
+| Good | < 5 µg/m³ | Green | EEA good |
+| Fair | 5-15 µg/m³ | Light Green | EEA fair |
+| Moderate | 15-50 µg/m³ | Yellow | EEA moderate |
+| Poor | 50-90 µg/m³ | Orange | EEA poor |
+| Very Poor | ≥ 90 µg/m³ | Red | EEA very/extremely poor combined |
 
 ### PM10 (Coarse Particulate Matter)
-Based on WHO 2021 Air Quality Guidelines:
+Physical-concentration entities use the EEA hourly display bands; WHO annual/24-hour reference values are in [Live Outdoor Pollutant Bands and Sources](#live-outdoor-pollutant-bands-and-sources).
 | Level | Range | Color | Meaning |
 |-------|-------|-------|---------|
-| Excellent | < 15 µg/m³ | Green | WHO annual guideline |
-| Good | 15-45 µg/m³ | Light Green | Acceptable |
-| Moderate | 45-75 µg/m³ | Yellow | Slightly elevated |
-| Elevated | 75-150 µg/m³ | Orange | Consider air purifier |
-| Poor | > 150 µg/m³ | Red | Air purifier recommended |
+| Good | < 15 µg/m³ | Green | EEA good |
+| Fair | 15-45 µg/m³ | Light Green | EEA fair |
+| Moderate | 45-120 µg/m³ | Yellow | EEA moderate |
+| Poor | 120-195 µg/m³ | Orange | EEA poor |
+| Very Poor | ≥ 195 µg/m³ | Red | EEA very/extremely poor combined |
 
 ### PM1 (Ultrafine Particulate Matter)
+There is no single WHO/EPA ambient guideline specifically for PM1. These are indicative dashboard bands; set `pm1_thresholds` to suit your sensor/use case.
 | Level | Range | Color | Meaning |
 |-------|-------|-------|---------|
 | Excellent | < 5 µg/m³ | Green | Clean air |
@@ -523,6 +630,7 @@ Based on WHO 2021 Air Quality Guidelines:
 | Poor | > 35 µg/m³ | Red | Air purifier recommended |
 
 ### PM0.3 (Particle Count)
+Particle count is not directly comparable to PM mass concentrations and has no single WHO/EPA ambient guideline. These are indicative dashboard bands; set `pm03_thresholds` to suit your sensor/use case.
 | Level | Range | Color | Meaning |
 |-------|-------|-------|---------|
 | Clean | < 500 p/0.1L | Green | Very clean air |
@@ -535,6 +643,8 @@ Based on WHO 2021 Air Quality Guidelines:
 
 Set `hcho_unit: auto`, `ppb`, or `ppm`. In `auto` mode the card reads the entity's `unit_of_measurement`; sensors without a recognised unit retain the backwards-compatible `ppb` behavior. HCHO status colors and thresholds are always evaluated in ppb internally, but ppm readings are displayed and graphed in ppm with two decimal places (for example, `0.04 ppm`). The default bands are `[20, 50, 100, 200]` ppb, equivalent to `[0.020, 0.050, 0.100, 0.200]` ppm.
 
+WHO's indoor-air guideline is 0.1 mg/m³ as a 30-minute average (roughly 80 ppb at standard reference conditions). The card's surrounding five bands are practical display bands, not a direct replacement for that time-weighted guideline. [WHO pollutant guidance](https://www.who.int/teams/environment-climate-change-and-health/air-quality-and-health/health-impacts/types-of-pollutants).
+
 | Level | Range | Color | Meaning |
 |-------|-------|-------|---------|
 | Excellent | < 20 ppb | Green | Safe levels |
@@ -544,6 +654,7 @@ Set `hcho_unit: auto`, `ppb`, or `ppm`. In `auto` mode the card reads the entity
 | Poor | > 200 ppb | Red | Take action |
 
 ### tVOC (Volatile Organic Compounds)
+There is no universal health threshold for a total VOC measurement: it depends on the individual compounds. The following bands are indicative indoor-air dashboard guidance; use a compound-specific sensor/reference where a compliance or health decision is required.
 The card auto-detects whether your sensor reports absolute concentration (ppb) or the unitless Sensirion VOC Index (0-500, centered at 100); force a mode with `tvoc_unit` if needed.
 
 Absolute (ppb):
@@ -589,15 +700,17 @@ Absolute (ppb) — anchored to WHO 2021 / EPA NO₂ standards (applied to NOx co
 
 ### NO₂, O₃, and SO₂
 
-These standalone pollutant metrics are intended for integrations such as WAQI that report concentrations in **µg/m³**. The card uses the entity's own unit label. The defaults below are starting bands for compact dashboard status colors; use `no2_thresholds`, `o3_thresholds`, or `so2_thresholds` if the source uses another unit or you prefer different alert boundaries.
+These standalone pollutant metrics work with physical-concentration sensors and WAQI. For physical concentration, their default status bands are the EEA hourly bands shown in [Live Outdoor Pollutant Bands and Sources](#live-outdoor-pollutant-bands-and-sources). The card keeps the entity's own unit label and automatically normalises supported `µg/m³`, `mg/m³`, and gas `ppb` values for its default colour/status calculation.
+
+The official Home Assistant WAQI integration is handled separately: its pollutant states are individual **AQI** values rather than concentrations, so they display `AQI` and use `[50, 100, 150, 200]` AQI boundaries. They must not be read as µg/m³.
 
 For outdoor overlays, use `outdoor_no2_entity`, `outdoor_o3_entity`, and `outdoor_so2_entity`. They support the same history loading, tooltips, ordering, status colours, and outdoor-only mixed-card behaviour as the older outdoor metrics.
 
 | Metric | Default thresholds | Configuration key |
 |--------|--------------------|-------------------|
-| NO₂ | `[10, 25, 50, 100]` µg/m³ | `no2_thresholds` |
-| O₃ | `[50, 100, 120, 180]` µg/m³ | `o3_thresholds` |
-| SO₂ | `[20, 40, 75, 125]` µg/m³ | `so2_thresholds` |
+| NO₂ | `[10, 25, 60, 100]` µg/m³ | `no2_thresholds` |
+| O₃ | `[60, 100, 120, 160]` µg/m³ | `o3_thresholds` |
+| SO₂ | `[20, 40, 125, 190]` µg/m³ | `so2_thresholds` |
 
 ### Humidity
 | Level | Range | Color | Meaning |
@@ -655,6 +768,9 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## Credits
 
 - Forked from [KadenThomp36/air-quality-card](https://github.com/KadenThomp36/air-quality-card); original work and MIT licence preserved.
-- Thresholds based on [WHO 2021 Air Quality Guidelines](https://www.who.int/publications/i/item/9789240034228)
+- Live ambient pollutant bands based on the [European Air Quality Index](https://airindex.eea.europa.eu/AQI/index.html).
+- Health reference values based on the [WHO Global Air Quality Guidelines](https://www.who.int/news-room/questions-and-answers/item/who-global-air-quality-guidelines) and [WHO pollutant guidance](https://www.who.int/teams/environment-climate-change-and-health/air-quality-and-health/health-impacts/types-of-pollutants).
+- NO₂/O₃/SO₂ ppb-to-µg/m³ factors from [DEFRA's conversion factors](https://uk-air.defra.gov.uk/assets/documents/reports/cat06/0502160851_Conversion_Factors_Between_ppb_and.pdf).
+- WAQI handling verified against the [WAQI API](https://aqicn.org/api/waqi.info) and [Home Assistant WAQI integration source](https://github.com/home-assistant/core/blob/dev/homeassistant/components/waqi/sensor.py).
 - CO2 recommendations based on [ASHRAE Standard 62.1](https://www.ashrae.org/technical-resources/bookstore/standards-62-1-62-2)
-- CO thresholds based on [EPA/WHO carbon monoxide guidelines](https://www.epa.gov/co-pollution)
+- CO thresholds based on [EPA carbon monoxide standards](https://www.epa.gov/co-pollution/timeline-carbon-monoxide-co-national-ambient-air-quality-standards-naaqs).

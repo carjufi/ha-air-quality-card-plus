@@ -1,5 +1,5 @@
 /**
- * Air Quality Card Plus v2.12.5 — Unit Tests
+ * Air Quality Card Plus v2.13.0 — Unit Tests
  * Run with: node test.js
  *
  * Tests color functions, recommendation waterfall, config validation,
@@ -107,8 +107,8 @@ section('PM2.5 Color');
 assert(card._getPM25Color(3) === '#4caf50', 'PM25 3 = green');
 assert(card._getPM25Color(10) === '#8bc34a', 'PM25 10 = light green');
 assert(card._getPM25Color(20) === '#ffc107', 'PM25 20 = yellow');
-assert(card._getPM25Color(30) === '#ff9800', 'PM25 30 = orange');
-assert(card._getPM25Color(50) === '#f44336', 'PM25 50 = red');
+assert(card._getPM25Color(30) === '#ffc107', 'PM25 30 = yellow (EEA moderate)');
+assert(card._getPM25Color(50) === '#ff9800', 'PM25 50 = orange (EEA poor)');
 
 section('PM1 Color');
 assert(card._getPM1Color(3) === '#4caf50', 'PM1 3 = green');
@@ -121,7 +121,7 @@ section('PM10 Color');
 assert(card._getPM10Color(10) === '#4caf50', 'PM10 10 = green');
 assert(card._getPM10Color(30) === '#8bc34a', 'PM10 30 = light green');
 assert(card._getPM10Color(60) === '#ffc107', 'PM10 60 = yellow');
-assert(card._getPM10Color(100) === '#ff9800', 'PM10 100 = orange');
+assert(card._getPM10Color(100) === '#ffc107', 'PM10 100 = yellow (EEA moderate)');
 assert(card._getPM10Color(200) === '#f44336', 'PM10 200 = red');
 
 section('PM0.3 Color');
@@ -182,11 +182,73 @@ assert(card._getMetricColor('no2', 30) === '#ffc107', 'NO₂ 30 = yellow');
 assert(card._getMetricStatus('no2', 30) === 'Moderate', 'NO₂ status is independent');
 assert(card._getMetricColor('o3', 110) === '#ffc107', 'O₃ 110 = yellow');
 assert(card._getMetricStatus('o3', 110) === 'Moderate', 'O₃ status follows O₃ thresholds');
-assert(card._getMetricColor('so2', 90) === '#ff9800', 'SO₂ 90 = orange');
-assert(card._getMetricStatus('so2', 90) === 'Elevated', 'SO₂ status follows SO₂ thresholds');
+assert(card._getMetricColor('so2', 90) === '#ffc107', 'SO₂ 90 = yellow (EEA moderate)');
+assert(card._getMetricStatus('so2', 90) === 'Moderate', 'SO₂ status follows EEA thresholds');
 assert(card._formatDominantPollutant('pm25') === 'PM2.5', 'dominant pm25 has a friendly label');
 assert(card._formatDominantPollutant('no2') === 'NO₂', 'dominant no2 has a friendly label');
 assert(card._formatDominantPollutant('so2') === 'SO₂', 'dominant so2 has a friendly label');
+
+section('Ambient pollutant unit normalization');
+const unitCard = new CardClass();
+unitCard.setConfig({ no2_entity: 'sensor.no2' });
+unitCard._hass = {
+  config: { unit_system: { temperature: '°C' } },
+  states: {
+    'sensor.no2': { state: '0.05', attributes: { unit_of_measurement: 'mg/m³' } }
+  }
+};
+assert(unitCard._toAmbientUgM3('no2', 0.05, 'sensor.no2') === 50, 'NO₂ mg/m³ converts to µg/m³ for default thresholds');
+assert(unitCard._getMetricColor('no2', 0.05, 'sensor.no2') === '#ffc107', 'NO₂ 0.05 mg/m³ uses EEA µg/m³ thresholds');
+unitCard._hass.states['sensor.no2'] = { state: '30', attributes: { unit_of_measurement: 'ppb' } };
+assert(Math.abs(unitCard._toAmbientUgM3('no2', 30, 'sensor.no2') - 56.4) < 0.001, 'NO₂ ppb converts using the standard gas factor');
+assert(unitCard._getMetricColor('no2', 30, 'sensor.no2') === '#ffc107', 'NO₂ 30 ppb maps to EEA moderate after conversion');
+unitCard.setConfig({ no2_entity: 'sensor.no2', no2_thresholds: [1, 2, 3, 4] });
+assert(unitCard._getMetricColor('no2', 3, 'sensor.no2') === '#ff9800', 'Custom NO₂ thresholds remain in the sensor unit without conversion');
+
+const mixedUnitGraph = new CardClass();
+mixedUnitGraph.setConfig({ no2_entity: 'sensor.indoor_no2', outdoor_no2_entity: 'sensor.outdoor_no2' });
+mixedUnitGraph._hass = {
+  config: { unit_system: { temperature: '°C' } },
+  states: {
+    'sensor.indoor_no2': { state: '30', attributes: { unit_of_measurement: 'ppb' } },
+    'sensor.outdoor_no2': { state: '56.4', attributes: { unit_of_measurement: 'µg/m³' } }
+  }
+};
+mixedUnitGraph._history = {
+  no2: [{ time: 1, value: 30 }, { time: 2, value: 31 }],
+  outdoor_no2: [{ time: 1, value: 56.4 }, { time: 2, value: 58.28 }]
+};
+let mixedUnitGraphArgs;
+mixedUnitGraph._renderGraph = (...args) => { mixedUnitGraphArgs = args; };
+mixedUnitGraph._renderMetricGraph('no2', (value, entityId) => mixedUnitGraph._getMetricColor('no2', value, entityId), 0, mixedUnitGraph._getAmbientGraphMax('no2'), 'ppb');
+assert(Math.abs(mixedUnitGraphArgs[6][0].value - 30) < 0.001, 'Mixed NO₂ graph converts outdoor µg/m³ values to the displayed indoor ppb unit');
+assert(Math.abs(mixedUnitGraph._ambientThresholdsInUnit('no2', 'sensor.indoor_no2')[3] - (100 / 1.88)) < 0.001, 'NO₂ graph scale converts default EEA thresholds into the displayed ppb unit');
+
+section('WAQI individual AQI values');
+const waqiCard = new CardClass();
+waqiCard.setConfig({
+  co_entity: 'sensor.waqi_co',
+  pm25_entity: 'sensor.indoor_pm25',
+  outdoor_pm25_entity: 'sensor.waqi_pm25',
+  outdoor_no2_entity: 'sensor.waqi_no2',
+  co2_entity: 'sensor.indoor_co2'
+});
+waqiCard._hass = {
+  config: { unit_system: { temperature: '°C' } },
+  states: {
+    'sensor.waqi_co': { state: '0.1', attributes: { attribution: 'World Air Quality Index Project' } },
+    'sensor.waqi_pm25': { state: '38', attributes: { attribution: 'World Air Quality Index Project' } },
+    'sensor.waqi_no2': { state: '38', attributes: { attribution: 'World Air Quality Index Project' } },
+    'sensor.indoor_pm25': { state: '4', attributes: { unit_of_measurement: 'µg/m³' } },
+    'sensor.indoor_co2': { state: '700', attributes: { unit_of_measurement: 'ppm' } }
+  }
+};
+assert(waqiCard._getCOUnit() === 'AQI', 'WAQI CO is labelled AQI instead of an assumed ppm concentration');
+assert(waqiCard._getPollutantUnit('no2') === 'AQI', 'WAQI NO₂ is labelled AQI instead of an assumed µg/m³ concentration');
+assert(waqiCard._getMetricStatus('no2', 38, 'sensor.waqi_no2') === 'Good', 'WAQI NO₂ 38 uses AQI bands, not concentration thresholds');
+assert(waqiCard._getOverallStatus().status === 'Good', 'WAQI PM2.5 AQI 38 does not make a clean indoor room unhealthy');
+assert(waqiCard._getRecommendationKey() === 'all_good', 'WAQI outdoor PM2.5 AQI 38 does not incorrectly block ventilation');
+assert(waqiCard._canOverlayAmbientMetric('pm25', 'sensor.indoor_pm25', 'sensor.waqi_pm25') === false, 'Physical PM2.5 and WAQI PM2.5 AQI are not drawn on the same graph scale');
 
 section('tVOC Color');
 assert(card._getTVOCColor(50) === '#4caf50', 'tVOC 50 = green');
@@ -348,6 +410,32 @@ setStates({ co2: 1100 });
 card._config.outdoor_co2_entity = 'sensor.outdoor_co2';
 card._hass.states['sensor.outdoor_co2'] = { state: '450' }; // typical fresh outdoor air
 assert(card._getRecommendation() === 'Open Window', 'normal outdoor CO2 does not suppress (450 is below concerning threshold)');
+
+section('Recommendation — Outdoor health and temperature guardrails');
+setStates({ co2: 450, pm25: 3 });
+card._config.outdoor_pm25_entity = 'sensor.outdoor_pm25';
+card._hass.states['sensor.outdoor_pm25'] = { state: '38', attributes: { unit_of_measurement: 'µg/m³' } };
+assert(card._getRecommendation() === 'Keep Windows Closed', 'Outdoor PM2.5 above the WHO 24-hour guide blocks ventilation even when indoors is good');
+const pm25Blocker = card._getOutdoorVentilationBlocker();
+assert(pm25Blocker.metric === 'pm25' && pm25Blocker.value === 38, 'Outdoor PM2.5 blocker identifies the source reading');
+
+setStates({ co2: 450, pm25: 3 });
+card._config.outdoor_no2_entity = 'sensor.outdoor_no2';
+card._hass.states['sensor.outdoor_no2'] = { state: '20', attributes: { unit_of_measurement: 'ppb' } };
+assert(card._getRecommendation() === 'Keep Windows Closed', 'Outdoor NO₂ ppb reading is normalized before applying the ventilation guardrail');
+
+setStates({ co2: 450, pm25: 3, temperature: 22 });
+card._config.temperature_unit = 'C';
+card._config.outdoor_temperature_entity = 'sensor.outdoor_temperature';
+card._hass.states['sensor.outdoor_temperature'] = { state: '29', attributes: { unit_of_measurement: '°C' } };
+assert(card._getRecommendation() === 'Keep Windows Closed', 'Hotter outdoor air blocks ventilation when it would worsen indoor comfort');
+assert(card._getOutdoorVentilationBlocker().direction === 'warmer', 'Outdoor heat blocker identifies warmer direction');
+
+setStates({ co2: 450, pm25: 3, temperature: 30 });
+card._config.temperature_unit = 'C';
+card._config.outdoor_temperature_entity = 'sensor.outdoor_temperature';
+card._hass.states['sensor.outdoor_temperature'] = { state: '29', attributes: { unit_of_measurement: '°C' } };
+assert(card._getRecommendation() === 'All Good', 'Cooler outdoor air does not block ventilation merely because it is warm');
 
 // ============================================================
 // RECOMMENDATION ICON TESTS
