@@ -22,6 +22,7 @@ This is a personalised extension of [KadenThomp36/air-quality-card](https://gith
   - [Sensor Order](#sensor-order)
   - [Recommendation Action Button](#recommendation-action-button)
   - [Compact Display Mode](#compact-display-mode)
+  - [Compact Chart Height](#compact-chart-height)
   - [Expandable Display Mode](#expandable-display-mode)
   - [Custom Thresholds](#custom-thresholds)
   - [Language](#language)
@@ -60,6 +61,8 @@ This is a personalised extension of [KadenThomp36/air-quality-card](https://gith
 - **Health-based thresholds** following WHO 2021 guidelines and ASHRAE standards
 - **Actionable recommendations** like "Open Window" or "Run Air Purifier"
 - **Outdoor sensor comparison** - optional dashed line overlay with smart ventilation recommendations
+- **Outdoor-only metric graphs in mixed cards** - configure an outdoor pollutant even when there is no indoor counterpart; it renders as its own dashed, labelled graph
+- **Compact chart height option** - reduce graph block height on dense dashboards with `compact_charts: true`
 - **Tap to expand** - click any graph to open the full Home Assistant history view
 - **Visual configuration editor** - no YAML required, with collapsible sections for clean organization
 
@@ -77,7 +80,7 @@ New cards should use `type: custom:air-quality-card-plus`. The older `type: cust
 2. Copy it to `/config/www/air-quality-card-plus/air-quality-card.js`
 3. Add the resource in Home Assistant:
    - Go to Settings → Dashboards → Resources
-   - Add `/local/air-quality-card-plus/air-quality-card.js?v=2.12.2` as a JavaScript Module
+   - Add `/local/air-quality-card-plus/air-quality-card.js?v=2.12.3` as a JavaScript Module
 
 ## Configuration
 
@@ -88,7 +91,7 @@ New cards should use `type: custom:air-quality-card-plus`. The older `type: cust
 3. Configure the entities using the visual editor
 4. Primary sensors (CO₂, PM2.5, Humidity, Temperature) are always visible
 5. Expand "Additional Sensors" for Radon, CO, HCHO, tVOC, NOx, NO₂, O₃, SO₂, PM1, PM10, PM4, and PM0.3
-6. Expand "Outdoor Sensors" for comparison data
+6. Expand "Outdoor Sensors" for comparison data. These selectors accept any `sensor` entity so WAQI entities are searchable even when Home Assistant does not assign a matching `device_class`.
 
 ### YAML Configuration
 
@@ -182,6 +185,7 @@ outdoor_temperature_entity: sensor.outdoor_sensor_temperature
 
 show_min_max: false
 tvoc_unit: auto
+compact_charts: true
 ```
 
 ### Configuration Options
@@ -216,6 +220,7 @@ tvoc_unit: auto
 | `tvoc_unit` | string | No | "auto" | tVOC measurement type: "auto" (detect from sensor), "ppb" (absolute), or "index" (Sensirion VOC Index) |
 | `nox_unit` | string | No | "auto" | NOx measurement type: "auto" (detect from sensor), "ppb" (absolute), or "index" (Sensirion NOx Index) |
 | `show_min_max` | boolean | No | `false` | Overlay the min/max values of the displayed time window directly at the data points on the graph |
+| `compact_charts` | boolean | No | `false` | Reduce graph block height/padding while keeping the same chart data, current values, status badges, and interactions |
 | `order` | array | No | default | Custom display order for metrics (see [Sensor Order](#sensor-order)) |
 | `display` | string | No | "full" | "full" (graphs and details), "compact" (status badge only), or "expandable" (compact, tap to expand to full) |
 | `compact_alerts` | boolean | No | `true` | In the compact/collapsed view, show small colored chips naming the sensors currently out of range |
@@ -248,10 +253,14 @@ tvoc_unit: auto
 | `outdoor_pm1_entity` | string | No | - | Outdoor PM1 sensor for comparison |
 | `outdoor_pm10_entity` | string | No | - | Outdoor PM10 sensor for comparison |
 | `outdoor_pm03_entity` | string | No | - | Outdoor PM0.3 sensor for comparison |
+| `outdoor_pm4_entity` | string | No | - | Outdoor PM4 sensor for comparison |
 | `outdoor_co_entity` | string | No | - | Outdoor CO sensor for comparison |
 | `outdoor_hcho_entity` | string | No | - | Outdoor HCHO sensor for comparison |
 | `outdoor_tvoc_entity` | string | No | - | Outdoor tVOC sensor for comparison |
 | `outdoor_nox_entity` | string | No | - | Outdoor NOx sensor for comparison |
+| `outdoor_no2_entity` | string | No | - | Outdoor NO₂ sensor for comparison |
+| `outdoor_o3_entity` | string | No | - | Outdoor O₃ sensor for comparison |
+| `outdoor_so2_entity` | string | No | - | Outdoor SO₂ sensor for comparison |
 | `outdoor_humidity_entity` | string | No | - | Outdoor humidity sensor for comparison |
 | `outdoor_temperature_entity` | string | No | - | Outdoor temperature sensor for comparison |
 
@@ -323,6 +332,19 @@ Compact mode:
 - Status badge updates in real-time from current sensor values
 - All three standard HA actions are supported: `tap_action`, `hold_action`, `double_tap_action`
 
+### Compact Chart Height
+
+If the full card feels too tall but you still want every graph visible, set `compact_charts: true`. This keeps the normal full-card layout and interactions, but reduces chart block padding, chart height, and time-axis spacing.
+
+```yaml
+type: custom:air-quality-card-plus
+name: Bedroom Air Quality
+compact_charts: true
+co2_entity: sensor.bedroom_air_sensor_carbon_dioxide
+pm25_entity: sensor.bedroom_air_sensor_pm2_5
+hcho_entity: sensor.bedroom_air_sensor_formaldehyde_concentration
+```
+
 ### Expandable Display Mode
 
 `display: expandable` starts as a compact summary and expands to the full card (graphs and details) when tapped — best of both worlds for space-constrained dashboards. A chevron indicates the toggle; tap the header again to collapse. History is fetched lazily the first time you expand.
@@ -381,7 +403,40 @@ Configure outdoor sensor entities to see a **dashed comparison line** on each gr
 - A subtle dashed line appears on the corresponding graph
 - Hovering shows both indoor and outdoor values
 - Current outdoor values appear next to indoor readings
+- A small source label explains the line styles: `solid: indoor · dashed: outdoor`
 - **Smart recommendations** avoid suggesting ventilation when outdoor air is worse (e.g., "Keep Windows Closed" instead of "Open Window")
+
+If you configure an outdoor entity without the matching indoor entity on the same mixed indoor card, it still renders as its own graph. In that case the graph is labelled `outdoor` and the main line is dashed.
+
+For Barcelona / WAQI, use the normal metric keys on a dedicated outdoor card, and use the `outdoor_*` keys when overlaying Barcelona readings on an indoor card:
+
+```yaml
+type: custom:air-quality-card-plus
+name: Bedroom + Barcelona Outdoor
+compact_charts: true
+
+co2_entity: sensor.bedroom_air_sensor_carbon_dioxide
+pm25_entity: sensor.bedroom_air_sensor_pm2_5
+hcho_entity: sensor.bedroom_air_sensor_formaldehyde_concentration
+tvoc_entity: sensor.bedroom_air_sensor_volatile_organic_compounds
+humidity_entity: sensor.bedroom_sensor_humidity
+temperature_entity: sensor.bedroom_sensor_temperature
+
+outdoor_pm25_entity: sensor.barcelona_eixample_catalunya_spain_pm2_5
+outdoor_pm10_entity: sensor.barcelona_eixample_catalunya_spain_pm10
+outdoor_no2_entity: sensor.barcelona_eixample_catalunya_spain_nitrogen_dioxide
+outdoor_o3_entity: sensor.barcelona_eixample_catalunya_spain_ozone
+outdoor_so2_entity: sensor.barcelona_eixample_catalunya_spain_sulphur_dioxide
+outdoor_co_entity: sensor.barcelona_eixample_catalunya_spain_carbon_monoxide
+outdoor_humidity_entity: sensor.barcelona_eixample_catalunya_spain_humidity
+outdoor_temperature_entity: sensor.barcelona_eixample_catalunya_spain_temperature
+outdoor_pressure_entity: sensor.barcelona_eixample_catalunya_spain_pressure
+
+air_quality_entity: sensor.barcelona_eixample_catalunya_spain_air_quality_index
+dominant_pollutant_entity: sensor.barcelona_eixample_catalunya_spain_dominant_pollutant
+```
+
+Use `outdoor_no2_entity` for Barcelona nitrogen dioxide. `outdoor_nox_entity` remains available for aggregate NOx or Sensirion NOx Index sensors, but it will display as NOx rather than NO₂.
 
 ### Outdoor-Only Mode
 
@@ -511,7 +566,7 @@ VOC Index (Sensirion):
 ### NOx (Nitrogen Oxides)
 Like tVOC, NOx comes in two flavors and the card auto-detects which one your sensor reports (force with `nox_unit`). Sensirion SGP41-based sensors (AirGradient ONE / Open Air, ESPHome `sgp4x`) report the unitless **NOx Index** — note its clean-air baseline is **1**, not 100 like the VOC Index.
 
-`nox_entity` remains for aggregate NOx concentration or the Sensirion **NOx Index**. Use the new `no2_entity` for a direct nitrogen dioxide (NO₂) measurement; it has a separate graph, state, status badge, thresholds, and history, and never reuses the NOx index behavior.
+`nox_entity` remains for aggregate NOx concentration or the Sensirion **NOx Index**. Use `no2_entity` (or `outdoor_no2_entity` on mixed indoor/outdoor cards) for a direct nitrogen dioxide (NO₂) measurement; it has a separate graph, state, status badge, thresholds, and history, and never reuses the NOx index behavior.
 
 NOx Index (Sensirion) — bands follow Sensirion's integration guidance and AirGradient's dashboard:
 | Level | Range | Color | Meaning |
@@ -534,6 +589,8 @@ Absolute (ppb) — anchored to WHO 2021 / EPA NO₂ standards (applied to NOx co
 ### NO₂, O₃, and SO₂
 
 These standalone pollutant metrics are intended for integrations such as WAQI that report concentrations in **µg/m³**. The card uses the entity's own unit label. The defaults below are starting bands for compact dashboard status colors; use `no2_thresholds`, `o3_thresholds`, or `so2_thresholds` if the source uses another unit or you prefer different alert boundaries.
+
+For outdoor overlays, use `outdoor_no2_entity`, `outdoor_o3_entity`, and `outdoor_so2_entity`. They support the same history loading, tooltips, ordering, status colours, and outdoor-only mixed-card behaviour as the older outdoor metrics.
 
 | Metric | Default thresholds | Configuration key |
 |--------|--------------------|-------------------|

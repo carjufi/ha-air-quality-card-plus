@@ -1,5 +1,5 @@
 /**
- * Air Quality Card Plus v2.12.2 — Unit Tests
+ * Air Quality Card Plus v2.12.3 — Unit Tests
  * Run with: node test.js
  *
  * Tests color functions, recommendation waterfall, config validation,
@@ -386,6 +386,18 @@ for (const key of singleSensorConfigs) {
   assert(ok, `Single ${key} accepted`);
 }
 
+const singleOutdoorConfigs = [
+  'outdoor_co2_entity', 'outdoor_pm25_entity', 'outdoor_pm1_entity', 'outdoor_pm10_entity',
+  'outdoor_pm03_entity', 'outdoor_pm4_entity', 'outdoor_no2_entity', 'outdoor_o3_entity',
+  'outdoor_so2_entity', 'outdoor_hcho_entity', 'outdoor_tvoc_entity', 'outdoor_nox_entity',
+  'outdoor_co_entity', 'outdoor_humidity_entity', 'outdoor_temperature_entity', 'outdoor_pressure_entity'
+];
+for (const key of singleOutdoorConfigs) {
+  let ok = true;
+  try { card.setConfig({ [key]: 'sensor.test_outdoor' }); } catch (e) { ok = false; }
+  assert(ok, `Single ${key} accepted`);
+}
+
 // Defaults
 card.setConfig({ co2_entity: 'sensor.co2' });
 assert(card._config.name === 'Air Quality', 'Default name');
@@ -393,6 +405,7 @@ assert(card._config.hours_to_show === 24, 'Default hours_to_show');
 assert(card._config.temperature_unit === 'auto', 'Default temperature_unit is auto');
 assert(card._config.radon_unit === 'auto', 'Default radon_unit is auto');
 assert(card._config.hcho_unit === 'auto', 'Default HCHO unit is auto');
+assert(card._config.compact_charts === false, 'Default compact_charts is false');
 
 const barcelonaCard = new CardClass();
 barcelonaCard.setConfig({
@@ -1208,6 +1221,64 @@ histNox._loadHistory();
 assert(histCalls.some(u => u.includes('sensor.nox')), '_loadHistory fetches the indoor NOx entity');
 assert(histCalls.some(u => u.includes('sensor.out_nox')), '_loadHistory fetches the outdoor NOx entity');
 
+section('Outdoor-only pollutant graphs in mixed cards');
+const outdoorGraphCard = new CardClass();
+outdoorGraphCard._config = {
+  co2_entity: 'sensor.indoor_co2',
+  outdoor_no2_entity: 'sensor.barcelona_no2'
+};
+outdoorGraphCard._hass = {
+  config: { unit_system: { temperature: '°F' } },
+  states: {
+    'sensor.barcelona_no2': { state: '31', attributes: { unit_of_measurement: 'µg/m³' } }
+  }
+};
+outdoorGraphCard._history = {
+  ...outdoorGraphCard._history,
+  co2: [],
+  no2: [],
+  outdoor_no2: [
+    { time: Date.now() - 1000, value: 20 },
+    { time: Date.now(), value: 31 }
+  ]
+};
+const outdoorGraphCalls = [];
+outdoorGraphCard._renderGraph = (...args) => { outdoorGraphCalls.push(args); };
+outdoorGraphCard._setupGraphInteractions = () => {};
+outdoorGraphCard._renderGraphs();
+const outdoorOnlyNo2Call = outdoorGraphCalls.find(call => call[0] === 'no2');
+assert(!!outdoorOnlyNo2Call, 'Outdoor-only NO₂ renders even without indoor NO₂');
+assert(outdoorOnlyNo2Call[1] === outdoorGraphCard._history.outdoor_no2, 'Outdoor-only NO₂ uses outdoor history as main data');
+assert(outdoorOnlyNo2Call[9].primaryLabel === 'Outdoor', 'Outdoor-only NO₂ tooltip is labelled Outdoor');
+assert(outdoorOnlyNo2Call[9].primaryLineStyle === 'dashed', 'Outdoor-only NO₂ main line is dashed');
+assert(outdoorGraphCard._metricValue('no2') === 31, 'Outdoor-only NO₂ current value is read from outdoor entity');
+assert(outdoorGraphCard._metricSourceLabel('no2') === 'outdoor', 'Outdoor-only NO₂ source label says outdoor');
+
+const mixedGraphCard = new CardClass();
+mixedGraphCard._config = {
+  no2_entity: 'sensor.indoor_no2',
+  outdoor_no2_entity: 'sensor.barcelona_no2'
+};
+mixedGraphCard._history = {
+  ...mixedGraphCard._history,
+  no2: [
+    { time: Date.now() - 1000, value: 10 },
+    { time: Date.now(), value: 12 }
+  ],
+  outdoor_no2: [
+    { time: Date.now() - 1000, value: 25 },
+    { time: Date.now(), value: 31 }
+  ]
+};
+const mixedGraphCalls = [];
+mixedGraphCard._renderGraph = (...args) => { mixedGraphCalls.push(args); };
+mixedGraphCard._setupGraphInteractions = () => {};
+mixedGraphCard._renderGraphs();
+const mixedNo2Call = mixedGraphCalls.find(call => call[0] === 'no2');
+assert(mixedNo2Call[6] === mixedGraphCard._history.outdoor_no2, 'Mixed NO₂ passes outdoor history as dashed overlay');
+assert(mixedNo2Call[9].primaryLabel === 'Indoor', 'Mixed NO₂ tooltip labels primary line as Indoor');
+assert(mixedGraphCard._metricSourceLabel('no2') === 'solid: indoor · dashed: outdoor', 'Mixed NO₂ source label explains line styles');
+
 section('Compact mode — tap actions');
 
 // _fireAction is a no-op when the corresponding action isn't configured
@@ -1516,11 +1587,12 @@ const allLabels = [
   'pm4_entity', 'nox_entity', 'no2_entity', 'o3_entity', 'so2_entity', 'pm1_entity', 'pm10_entity', 'pm03_entity',
   'outdoor_co2_entity', 'outdoor_pm25_entity', 'outdoor_humidity_entity', 'outdoor_temperature_entity',
   'outdoor_co_entity', 'outdoor_hcho_entity', 'outdoor_tvoc_entity',
-  'outdoor_pm1_entity', 'outdoor_pm10_entity', 'outdoor_pm03_entity', 'outdoor_nox_entity',
+  'outdoor_pm1_entity', 'outdoor_pm10_entity', 'outdoor_pm03_entity', 'outdoor_pm4_entity',
+  'outdoor_nox_entity', 'outdoor_no2_entity', 'outdoor_o3_entity', 'outdoor_so2_entity',
   'pressure_entity', 'outdoor_pressure_entity',
   'air_quality_entity', 'dominant_pollutant_entity', 'hours_to_show', 'temperature_unit', 'radon_unit', 'hcho_unit', 'show_min_max',
   'tvoc_unit', 'nox_unit', 'language',
-  'recommendation_action', 'compact_alerts', 'auto_expand'
+  'recommendation_action', 'compact_alerts', 'compact_charts', 'auto_expand'
 ];
 for (const name of allLabels) {
   const label = editor._computeLabel({ name });
@@ -1546,6 +1618,25 @@ assert(outdoorSection.flatten === true, 'Outdoor Sensors has flatten: true');
 const advancedSection = findExpandable(schema, 'Advanced');
 assert(advancedSection !== null, 'Advanced expandable exists');
 assert(advancedSection.flatten === true, 'Advanced has flatten: true');
+
+function findSchemaItem(schemaArr, name) {
+  for (const item of schemaArr) {
+    if (item.name === name) return item;
+    if (Array.isArray(item.schema)) {
+      const found = findSchemaItem(item.schema, name);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+for (const name of ['outdoor_no2_entity', 'outdoor_o3_entity', 'outdoor_so2_entity', 'outdoor_pm4_entity']) {
+  assert(findSchemaItem(schema, name) !== null, `Editor schema includes ${name}`);
+}
+const outdoorCoSelector = findSchemaItem(schema, 'outdoor_co_entity')?.selector;
+assert(JSON.stringify(outdoorCoSelector).includes('"domain":"sensor"'), 'Outdoor CO selector accepts sensor domain');
+assert(!JSON.stringify(outdoorCoSelector).includes('device_class'), 'Outdoor CO selector is not restricted by device_class');
+assert(findSchemaItem(schema, 'compact_charts')?.selector?.boolean !== undefined, 'Editor schema includes compact_charts boolean');
 
 section('New pollutant graph interactions');
 const interactionCard = new CardClass();
@@ -1576,6 +1667,22 @@ assert(interactionListeners.includes('no2-graph-container:click'), 'NO₂ graph 
 assert(interactionListeners.includes('o3-graph:mousemove'), 'O₃ graph hover is wired');
 assert(interactionListeners.includes('so2-graph:touchstart'), 'SO₂ graph touch is wired');
 
+const outdoorInteractionCard = new CardClass();
+outdoorInteractionCard._config = { outdoor_no2_entity: 'sensor.out_no2' };
+const outdoorInteractionElementIds = [];
+outdoorInteractionCard.shadowRoot = {
+  getElementById(id) {
+    outdoorInteractionElementIds.push(id);
+    return {
+      dataset: { entity: 'sensor.out_no2' },
+      style: { setProperty() {} },
+      addEventListener() {}
+    };
+  }
+};
+outdoorInteractionCard._setupGraphInteractions();
+assert(outdoorInteractionElementIds.includes('no2-graph-container'), 'Outdoor-only NO₂ graph interactions are wired');
+
 // ============================================================
 // HISTORY KEYS TEST
 // ============================================================
@@ -1584,14 +1691,26 @@ section('History Keys');
 
 section('New pollutant history loading');
 const pollutantHistoryCard = new CardClass();
-pollutantHistoryCard.setConfig({ no2_entity: 'sensor.no2', o3_entity: 'sensor.o3', so2_entity: 'sensor.so2' });
+pollutantHistoryCard.setConfig({
+  no2_entity: 'sensor.no2',
+  o3_entity: 'sensor.o3',
+  so2_entity: 'sensor.so2',
+  outdoor_no2_entity: 'sensor.out_no2',
+  outdoor_o3_entity: 'sensor.out_o3',
+  outdoor_so2_entity: 'sensor.out_so2',
+  outdoor_pm4_entity: 'sensor.out_pm4'
+});
 const pollutantHistoryCalls = [];
 pollutantHistoryCard._hass = {
   config: { unit_system: { temperature: '°F' } },
   states: {
     'sensor.no2': { state: '20', attributes: { unit_of_measurement: 'μg/m³' } },
     'sensor.o3': { state: '100', attributes: { unit_of_measurement: 'μg/m³' } },
-    'sensor.so2': { state: '25', attributes: { unit_of_measurement: 'μg/m³' } }
+    'sensor.so2': { state: '25', attributes: { unit_of_measurement: 'μg/m³' } },
+    'sensor.out_no2': { state: '30', attributes: { unit_of_measurement: 'μg/m³' } },
+    'sensor.out_o3': { state: '90', attributes: { unit_of_measurement: 'μg/m³' } },
+    'sensor.out_so2': { state: '15', attributes: { unit_of_measurement: 'μg/m³' } },
+    'sensor.out_pm4': { state: '7', attributes: { unit_of_measurement: 'μg/m³' } }
   },
   callApi: async (method, uri) => { pollutantHistoryCalls.push(uri); return [[{ last_changed: '2026-06-11T00:00:00Z', state: '1' }]]; }
 };
@@ -1600,12 +1719,17 @@ pollutantHistoryCard._loadHistory();
 assert(pollutantHistoryCalls.some(uri => uri.includes('sensor.no2')), 'history fetches NO₂');
 assert(pollutantHistoryCalls.some(uri => uri.includes('sensor.o3')), 'history fetches O₃');
 assert(pollutantHistoryCalls.some(uri => uri.includes('sensor.so2')), 'history fetches SO₂');
+assert(pollutantHistoryCalls.some(uri => uri.includes('sensor.out_no2')), 'history fetches outdoor NO₂');
+assert(pollutantHistoryCalls.some(uri => uri.includes('sensor.out_o3')), 'history fetches outdoor O₃');
+assert(pollutantHistoryCalls.some(uri => uri.includes('sensor.out_so2')), 'history fetches outdoor SO₂');
+assert(pollutantHistoryCalls.some(uri => uri.includes('sensor.out_pm4')), 'history fetches outdoor PM4');
 
 const freshCard = new CardClass();
 const expectedKeys = [
   'co2', 'pm25', 'pm1', 'pm10', 'pm03', 'pm4', 'no2', 'o3', 'so2', 'hcho', 'tvoc', 'nox', 'co', 'radon', 'radon_longterm',
   'humidity', 'temperature', 'pressure',
   'outdoor_co2', 'outdoor_pm25', 'outdoor_pm1', 'outdoor_pm10', 'outdoor_pm03',
+  'outdoor_pm4', 'outdoor_no2', 'outdoor_o3', 'outdoor_so2',
   'outdoor_hcho', 'outdoor_tvoc', 'outdoor_nox', 'outdoor_co',
   'outdoor_humidity', 'outdoor_temperature', 'outdoor_pressure'
 ];
