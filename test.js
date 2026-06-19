@@ -1,5 +1,5 @@
 /**
- * Air Quality Card Plus v2.12.3 — Unit Tests
+ * Air Quality Card Plus v2.12.4 — Unit Tests
  * Run with: node test.js
  *
  * Tests color functions, recommendation waterfall, config validation,
@@ -1252,7 +1252,7 @@ assert(outdoorOnlyNo2Call[1] === outdoorGraphCard._history.outdoor_no2, 'Outdoor
 assert(outdoorOnlyNo2Call[9].primaryLabel === 'Outdoor', 'Outdoor-only NO₂ tooltip is labelled Outdoor');
 assert(outdoorOnlyNo2Call[9].primaryLineStyle === 'dashed', 'Outdoor-only NO₂ main line is dashed');
 assert(outdoorGraphCard._metricValue('no2') === 31, 'Outdoor-only NO₂ current value is read from outdoor entity');
-assert(outdoorGraphCard._metricSourceLabel('no2') === 'outdoor', 'Outdoor-only NO₂ source label says outdoor');
+assert(outdoorGraphCard._hasOutdoorMetrics() === true, 'Outdoor-only NO₂ enables the shared outdoor legend');
 
 const mixedGraphCard = new CardClass();
 mixedGraphCard._config = {
@@ -1277,7 +1277,11 @@ mixedGraphCard._renderGraphs();
 const mixedNo2Call = mixedGraphCalls.find(call => call[0] === 'no2');
 assert(mixedNo2Call[6] === mixedGraphCard._history.outdoor_no2, 'Mixed NO₂ passes outdoor history as dashed overlay');
 assert(mixedNo2Call[9].primaryLabel === 'Indoor', 'Mixed NO₂ tooltip labels primary line as Indoor');
-assert(mixedGraphCard._metricSourceLabel('no2') === 'solid: indoor · dashed: outdoor', 'Mixed NO₂ source label explains line styles');
+assert(mixedGraphCard._hasOutdoorMetrics() === true, 'Mixed NO₂ enables the shared outdoor legend');
+
+const indoorOnlyLegendCard = new CardClass();
+indoorOnlyLegendCard._config = { pm25_entity: 'sensor.indoor_pm25' };
+assert(indoorOnlyLegendCard._hasOutdoorMetrics() === false, 'Indoor-only card does not render an outdoor legend');
 
 section('Compact mode — tap actions');
 

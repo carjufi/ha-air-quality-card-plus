@@ -61,7 +61,8 @@ This is a personalised extension of [KadenThomp36/air-quality-card](https://gith
 - **Health-based thresholds** following WHO 2021 guidelines and ASHRAE standards
 - **Actionable recommendations** like "Open Window" or "Run Air Purifier"
 - **Outdoor sensor comparison** - optional dashed line overlay with smart ventilation recommendations
-- **Outdoor-only metric graphs in mixed cards** - configure an outdoor pollutant even when there is no indoor counterpart; it renders as its own dashed, labelled graph
+- **Shared indoor/outdoor legend** - one compact footer key explains solid indoor and dashed outdoor lines without adding height to every graph
+- **Outdoor-only metric graphs in mixed cards** - configure an outdoor pollutant even when there is no indoor counterpart; it renders as its own dashed graph
 - **Compact chart height option** - reduce graph block height on dense dashboards with `compact_charts: true`
 - **Tap to expand** - click any graph to open the full Home Assistant history view
 - **Visual configuration editor** - no YAML required, with collapsible sections for clean organization
@@ -80,7 +81,7 @@ New cards should use `type: custom:air-quality-card-plus`. The older `type: cust
 2. Copy it to `/config/www/air-quality-card-plus/air-quality-card.js`
 3. Add the resource in Home Assistant:
    - Go to Settings → Dashboards → Resources
-   - Add `/local/air-quality-card-plus/air-quality-card.js?v=2.12.3` as a JavaScript Module
+   - Add `/local/air-quality-card-plus/air-quality-card.js?v=2.12.4` as a JavaScript Module
 
 ## Configuration
 
@@ -403,10 +404,10 @@ Configure outdoor sensor entities to see a **dashed comparison line** on each gr
 - A subtle dashed line appears on the corresponding graph
 - Hovering shows both indoor and outdoor values
 - Current outdoor values appear next to indoor readings
-- A small source label explains the line styles: `solid: indoor · dashed: outdoor`
+- One compact card-footer legend explains the line styles: solid = indoor, dashed = outdoor
 - **Smart recommendations** avoid suggesting ventilation when outdoor air is worse (e.g., "Keep Windows Closed" instead of "Open Window")
 
-If you configure an outdoor entity without the matching indoor entity on the same mixed indoor card, it still renders as its own graph. In that case the graph is labelled `outdoor` and the main line is dashed.
+If you configure an outdoor entity without the matching indoor entity on the same mixed indoor card, it still renders as its own graph with a dashed line. The shared footer legend still identifies it as outdoor, without spending a line of height in that graph.
 
 For Barcelona / WAQI, use the normal metric keys on a dedicated outdoor card, and use the `outdoor_*` keys when overlaying Barcelona readings on an indoor card:
 

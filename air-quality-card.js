@@ -1,12 +1,12 @@
 /**
- * Air Quality Card Plus v2.12.3
+ * Air Quality Card Plus v2.12.4
  * A custom Home Assistant card for air quality visualization
  * Thresholds based on WHO 2021 guidelines and ASHRAE standards
  *
  * https://github.com/KadenThomp36/air-quality-card
  */
 
-const CARD_VERSION = '2.12.3';
+const CARD_VERSION = '2.12.4';
 
 // Shared color palettes for the 5-tier color scale used across metrics.
 const SCALE_AIRQUALITY = ['#4caf50', '#8bc34a', '#ffc107', '#ff9800', '#f44336']; // green → red
@@ -503,6 +503,10 @@ class AirQualityCard extends HTMLElement {
 
   _hasOutdoorMetric(metric) {
     return !!this._config?.[this._outdoorEntityKey(metric)];
+  }
+
+  _hasOutdoorMetrics() {
+    return this._getMetricOrder().some(metric => metric !== 'radon' && this._hasOutdoorMetric(metric));
   }
 
   _metricValue(metric) {
@@ -1323,6 +1327,7 @@ class AirQualityCard extends HTMLElement {
     const showHumidity = this._hasMetric('humidity');
     const showTemp = this._hasMetric('temperature');
     const showPressure = this._hasMetric('pressure');
+    const showOutdoorLegend = this._hasOutdoorMetrics();
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -1705,20 +1710,6 @@ class AirQualityCard extends HTMLElement {
           opacity: 0.7;
         }
 
-        .graph-source-label {
-          display: none;
-          margin: -2px 0 4px;
-          color: var(--secondary-text-color);
-          font-size: 0.64em;
-          letter-spacing: 0.2px;
-          opacity: 0.72;
-        }
-
-        .compact-charts .graph-source-label {
-          margin-bottom: 2px;
-          font-size: 0.6em;
-        }
-
         .graph-time-axis {
           display: flex;
           justify-content: space-between;
@@ -1731,6 +1722,39 @@ class AirQualityCard extends HTMLElement {
         .compact-charts .graph-time-axis {
           margin-top: 2px;
           font-size: 0.55em;
+        }
+
+        .graph-legend {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 10px;
+          margin: 6px 2px 0;
+          color: var(--secondary-text-color);
+          font-size: 0.65em;
+          opacity: 0.78;
+        }
+
+        .graph-legend-item {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .graph-legend-line {
+          display: inline-block;
+          width: 16px;
+          border-top: 2px solid currentColor;
+          border-radius: 2px;
+        }
+
+        .graph-legend-line--outdoor {
+          border-top-style: dashed;
+        }
+
+        .compact-charts .graph-legend {
+          margin-top: 4px;
+          font-size: 0.6em;
         }
 
         .no-data {
@@ -2123,6 +2147,12 @@ class AirQualityCard extends HTMLElement {
             </div>
             ` : ''}
           </div>
+          ${showOutdoorLegend ? `
+          <div class="graph-legend" aria-label="Line styles: solid indoor, dashed outdoor">
+            <span class="graph-legend-item"><span class="graph-legend-line"></span>Indoor</span>
+            <span class="graph-legend-item"><span class="graph-legend-line graph-legend-line--outdoor"></span>Outdoor</span>
+          </div>
+          ` : ''}
         </div>
       </ha-card>
     `;
@@ -2587,39 +2617,6 @@ class AirQualityCard extends HTMLElement {
       }
     }
 
-    this._updateGraphSourceLabels();
-  }
-
-  _metricSourceLabel(metric) {
-    const primary = this._hasPrimaryMetric(metric);
-    const outdoor = this._hasOutdoorMetric(metric);
-    if (primary && outdoor) return 'solid: indoor · dashed: outdoor';
-    if (!primary && outdoor) return 'outdoor';
-    return '';
-  }
-
-  _updateGraphSourceLabels() {
-    if (!this.shadowRoot || !this._config) return;
-    for (const metric of this._getMetricOrder()) {
-      if (metric === 'radon') continue;
-      const container = this.shadowRoot.getElementById(`${metric}-graph-container`);
-      if (!container || typeof container.querySelector !== 'function') continue;
-
-      let label = container.querySelector('.graph-source-label');
-      const text = this._metricSourceLabel(metric);
-
-      if (!label && text) {
-        const header = container.querySelector('.graph-header');
-        if (!header || typeof header.insertAdjacentHTML !== 'function') continue;
-        header.insertAdjacentHTML('afterend', '<div class="graph-source-label"></div>');
-        label = container.querySelector('.graph-source-label');
-      }
-
-      if (label) {
-        label.textContent = text;
-        label.style.display = text ? 'block' : 'none';
-      }
-    }
   }
 
   // Pressure unit: use the sensor's own unit_of_measurement when present,
