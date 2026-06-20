@@ -1,12 +1,12 @@
 /**
- * Air Quality Card Plus v2.13.1
+ * Air Quality Card Plus v2.13.2
  * A custom Home Assistant card for air quality visualization
  * EEA live-air bands, WHO/EPA reference values, and ASHRAE comfort guidance
  *
  * https://github.com/KadenThomp36/air-quality-card
  */
 
-const CARD_VERSION = '2.13.1';
+const CARD_VERSION = '2.13.2';
 
 // Shared color palettes for the 5-tier color scale used across metrics.
 const SCALE_AIRQUALITY = ['#4caf50', '#8bc34a', '#ffc107', '#ff9800', '#f44336']; // green → red
@@ -20,6 +20,21 @@ const WAQI_POLLUTANT_METRICS = new Set(['co', ...AMBIENT_METRICS]);
 // without a physical unit, so keep their scale explicitly separate.
 const WAQI_AQI_THRESHOLDS = [50, 100, 150, 200];
 const WAQI_AQI_LABELS = ['Good', 'Moderate', 'Unhealthy for Sensitive Groups', 'Unhealthy', 'Very Unhealthy'];
+// Current US EPA particle-AQI breakpoints. These are intentionally used only
+// for the opt-in-by-context mixed view below: a physical indoor PM value next
+// to an outdoor WAQI AQI. They are not the card's normal live-air status
+// bands, which remain the EEA hourly bands documented in METRIC_DEFS.
+const US_EPA_PARTICLE_AQI_BREAKPOINTS = {
+  pm25: [
+    [0.0, 9.0, 0, 50], [9.1, 35.4, 51, 100], [35.5, 55.4, 101, 150],
+    [55.5, 125.4, 151, 200], [125.5, 225.4, 201, 300],
+    [225.5, 325.4, 301, 500]
+  ],
+  pm10: [
+    [0, 54, 0, 50], [55, 154, 51, 100], [155, 254, 101, 150],
+    [255, 354, 151, 200], [355, 424, 201, 300], [425, 604, 301, 500]
+  ]
+};
 // WHO/DEFRA conversion factors at 25 °C and 1013 mbar. They let the card use
 // the same EEA µg/m³ defaults when a gas sensor reports ppb instead.
 const GAS_UG_M3_PER_PPB = { no2: 1.88, o3: 1.96, so2: 2.62 };
@@ -894,7 +909,7 @@ class AirQualityCard extends HTMLElement {
   }
 
   _getCO2Color(value)  { return this._getMetricColor('co2', value); }
-  _getPM25Color(value) { return this._getMetricColor('pm25', value); }
+  _getPM25Color(value, entityId) { return this._getMetricColor('pm25', value, entityId); }
   _getHCHOColor(value) { return this._getMetricColor('hcho', this._getHCHOPpb(value)); }
   _getHCHOStatus(value) { return this._getMetricStatus('hcho', this._getHCHOPpb(value)); }
   _getPM4Color(value)  { return this._getMetricColor('pm4', value); }
@@ -902,9 +917,9 @@ class AirQualityCard extends HTMLElement {
   _getPressureColor(value) { return this._getMetricColor('pressure', value); }
   _getHumidityColor(value) { return this._getMetricColor('humidity', value); }
   _getPM1Color(value)  { return this._getMetricColor('pm1', value); }
-  _getPM10Color(value) { return this._getMetricColor('pm10', value); }
+  _getPM10Color(value, entityId) { return this._getMetricColor('pm10', value, entityId); }
   _getPM03Color(value) { return this._getMetricColor('pm03', value); }
-  _getCOColor(value)   { return this._getMetricColor('co', value); }
+  _getCOColor(value, entityId)   { return this._getMetricColor('co', value, entityId); }
   _getRadonColor(bq)   { return this._getMetricColor('radon', bq); }
 
   _getPollutantUnit(metric) {
@@ -938,6 +953,53 @@ class AirQualityCard extends HTMLElement {
     // a scale.
     return this._toAmbientUgM3(metric, 1, primaryEntityId) !== null &&
       this._toAmbientUgM3(metric, 1, outdoorEntityId) !== null;
+  }
+
+  // WAQI reports its pollutant entities as US EPA individual AQI. A raw
+  // indoor PM concentration is therefore not on the same graph scale. For
+  // the two particle metrics with a shared 24-hour AQI window, render a
+  // clearly-labelled indoor AQI *equivalent* instead. This is deliberately
+  // narrower than "convert every pollutant": NO₂, O₃, SO₂, and CO have other
+  // AQI averaging rules and need a dedicated rolling-average implementation.
+  _usesAqiComparison(metric) {
+    if (!['pm25', 'pm10'].includes(metric)) return false;
+    const primaryEntityId = this._config[`${metric}_entity`];
+    const outdoorEntityId = this._config[`outdoor_${metric}_entity`];
+    return Boolean(primaryEntityId && outdoorEntityId) &&
+      !this._isAmbientAqiEntity(metric, primaryEntityId) &&
+      this._isAmbientAqiEntity(metric, outdoorEntityId) &&
+      this._toAmbientUgM3(metric, 1, primaryEntityId) !== null;
+  }
+
+  // Converts a physical PM reading to a US EPA AQI-equivalent. EPA AQI is
+  // formally calculated from its specified averaging period; this card draws
+  // the value at each history sample, so it is expressly labelled equivalent
+  // rather than presented as an official AQI/NowCast.
+  _toUsEpaParticleAqiEquivalent(metric, value, entityId) {
+    const breakpoints = US_EPA_PARTICLE_AQI_BREAKPOINTS[metric];
+    if (!breakpoints) return null;
+    if (this._isAmbientAqiEntity(metric, entityId)) return value;
+    const ugM3 = this._toAmbientUgM3(metric, value, entityId);
+    if (!Number.isFinite(ugM3)) return null;
+    // EPA specifies truncation to one decimal for PM2.5 and to an integer for
+    // PM10 before applying the linear AQI interpolation equation.
+    const concentration = metric === 'pm25'
+      ? Math.floor(ugM3 * 10) / 10
+      : Math.floor(ugM3);
+    const [lowC, highC, lowAqi, highAqi] = breakpoints.find((entry) => concentration <= entry[1]) || breakpoints[breakpoints.length - 1];
+    const aqi = ((highAqi - lowAqi) / (highC - lowC)) * (concentration - lowC) + lowAqi;
+    return Math.max(0, Math.min(500, Math.round(aqi)));
+  }
+
+  _getAqiColor(value) {
+    const aqi = Number(value);
+    return Number.isFinite(aqi)
+      ? this._tieredValue(aqi, WAQI_AQI_THRESHOLDS, SCALE_AIRQUALITY)
+      : null;
+  }
+
+  _getAqiStatus(value) {
+    return this._tieredValue(value, WAQI_AQI_THRESHOLDS, WAQI_AQI_LABELS);
   }
 
   _getNO2Unit() { return this._getPollutantUnit('no2'); }
@@ -1237,6 +1299,11 @@ class AirQualityCard extends HTMLElement {
   }
 
   _getQualityColor(quality) {
+    // WAQI's overall station entity is numeric AQI. Apply the same AQI
+    // breakpoints used for detected WAQI pollutant entities so the header
+    // leaf, number, and badge tint communicate one coherent status.
+    const aqiColor = this._getAqiColor(quality);
+    if (aqiColor) return aqiColor;
     const colors = {
       'good': '#4caf50',
       'excellent': '#4caf50',
@@ -2698,14 +2765,18 @@ class AirQualityCard extends HTMLElement {
 
     // Update PM2.5
     if (pm25 !== null) {
-      const pm25Color = this._getPM25Color(pm25);
+      const pm25AqiComparison = this._usesAqiComparison('pm25');
+      const pm25AqiValue = pm25AqiComparison
+        ? this._toUsEpaParticleAqiEquivalent('pm25', pm25, this._metricEntity('pm25'))
+        : null;
+      const pm25Color = pm25AqiComparison ? this._getAqiColor(pm25AqiValue) : this._getPM25Color(pm25);
       const pm25ValueEl = this.shadowRoot.getElementById('pm25-value');
       if (pm25ValueEl) {
-        const pm25Unit = this._getPollutantUnit('pm25');
-        const pm25Display = pm25Unit === 'AQI' ? Math.round(pm25) : pm25.toFixed(1);
-        pm25ValueEl.innerHTML = `${pm25Display} <span class="unit">${pm25Unit}</span><span class="status" id="pm25-status"></span>${outdoorSuffix('outdoor_pm25_entity', pm25, pm25Unit, undefined, 'pm25')}`;
+        const pm25Unit = pm25AqiComparison ? 'AQI eq.' : this._getPollutantUnit('pm25');
+        const pm25Display = pm25Unit.startsWith('AQI') ? Math.round(pm25AqiComparison ? pm25AqiValue : pm25) : pm25.toFixed(1);
+        pm25ValueEl.innerHTML = `${pm25Display} <span class="unit">${pm25Unit}</span><span class="status" id="pm25-status"></span>${outdoorSuffix('outdoor_pm25_entity', pm25, pm25AqiComparison ? 'AQI' : pm25Unit, undefined, 'pm25')}`;
         const statusEl = pm25ValueEl.querySelector('.status');
-        statusEl.textContent = this._getMetricStatus('pm25', pm25);
+        statusEl.textContent = pm25AqiComparison ? this._getAqiStatus(pm25AqiValue) : this._getMetricStatus('pm25', pm25);
         statusEl.style.background = pm25Color + '22';
         statusEl.style.color = pm25Color;
         pm25ValueEl.style.color = pm25Color;
@@ -2714,14 +2785,18 @@ class AirQualityCard extends HTMLElement {
 
     // Update PM10
     if (pm10 !== null) {
-      const pm10Color = this._getPM10Color(pm10);
+      const pm10AqiComparison = this._usesAqiComparison('pm10');
+      const pm10AqiValue = pm10AqiComparison
+        ? this._toUsEpaParticleAqiEquivalent('pm10', pm10, this._metricEntity('pm10'))
+        : null;
+      const pm10Color = pm10AqiComparison ? this._getAqiColor(pm10AqiValue) : this._getPM10Color(pm10);
       const pm10ValueEl = this.shadowRoot.getElementById('pm10-value');
       if (pm10ValueEl) {
-        const pm10Unit = this._getPollutantUnit('pm10');
-        const pm10Display = pm10Unit === 'AQI' ? Math.round(pm10) : pm10.toFixed(1);
-        pm10ValueEl.innerHTML = `${pm10Display} <span class="unit">${pm10Unit}</span><span class="status" id="pm10-status"></span>${outdoorSuffix('outdoor_pm10_entity', pm10, pm10Unit, undefined, 'pm10')}`;
+        const pm10Unit = pm10AqiComparison ? 'AQI eq.' : this._getPollutantUnit('pm10');
+        const pm10Display = pm10Unit.startsWith('AQI') ? Math.round(pm10AqiComparison ? pm10AqiValue : pm10) : pm10.toFixed(1);
+        pm10ValueEl.innerHTML = `${pm10Display} <span class="unit">${pm10Unit}</span><span class="status" id="pm10-status"></span>${outdoorSuffix('outdoor_pm10_entity', pm10, pm10AqiComparison ? 'AQI' : pm10Unit, undefined, 'pm10')}`;
         const statusEl = pm10ValueEl.querySelector('.status');
-        statusEl.textContent = this._getMetricStatus('pm10', pm10);
+        statusEl.textContent = pm10AqiComparison ? this._getAqiStatus(pm10AqiValue) : this._getMetricStatus('pm10', pm10);
         statusEl.style.background = pm10Color + '22';
         statusEl.style.color = pm10Color;
         pm10ValueEl.style.color = pm10Color;
@@ -2934,10 +3009,13 @@ class AirQualityCard extends HTMLElement {
     const outdoorData = this._history[`outdoor_${metric}`] || [];
     const hasPrimary = this._hasPrimaryMetric(metric);
     const hasOutdoor = this._hasOutdoorMetric(metric);
-    const canOverlayOutdoor = !hasPrimary || !hasOutdoor || this._canOverlayAmbientMetric(
+    const primaryEntityId = this._config[`${metric}_entity`];
+    const outdoorEntityId = this._config[`outdoor_${metric}_entity`];
+    const useAqiComparison = this._usesAqiComparison(metric);
+    const canOverlayOutdoor = useAqiComparison || !hasPrimary || !hasOutdoor || this._canOverlayAmbientMetric(
       metric,
-      this._config[`${metric}_entity`],
-      this._config[`outdoor_${metric}_entity`]
+      primaryEntityId,
+      outdoorEntityId
     );
     const displayEntityId = hasPrimary
       ? this._config[`${metric}_entity`]
@@ -2950,35 +3028,62 @@ class AirQualityCard extends HTMLElement {
         return converted === null ? point : { ...point, value: converted };
       });
     };
-    const graphPrimaryData = convertForDisplay(primaryData, this._config[`${metric}_entity`]);
-    const graphOutdoorData = convertForDisplay(outdoorData, this._config[`outdoor_${metric}_entity`]);
+    const graphPrimaryData = useAqiComparison
+      ? primaryData.map(point => ({
+          ...point,
+          value: this._toUsEpaParticleAqiEquivalent(metric, point.value, primaryEntityId)
+        })).filter(point => point.value !== null)
+      : convertForDisplay(primaryData, primaryEntityId);
+    const graphOutdoorData = useAqiComparison
+      ? outdoorData
+      : convertForDisplay(outdoorData, outdoorEntityId);
     // Both lines now use `unit`, so their colors must be evaluated against the
     // matching display entity/unit rather than the original outdoor source.
-    const graphColorFn = (value) => colorFn(value, displayEntityId);
+    const graphColorFn = useAqiComparison
+      ? (value) => this._getAqiColor(value)
+      : (value) => colorFn(value, displayEntityId);
+    // Incompatible sources (for example indoor PM2.5 in µg/m³ and WAQI
+    // PM2.5 AQI) must not share a plotted Y-axis. Keep the exterior history
+    // available to the tooltip, where its own unit makes the distinction
+    // explicit, without drawing a scientifically false dashed line.
+    const tooltipOnlyOutdoor = hasPrimary && hasOutdoor && !canOverlayOutdoor;
+    const tooltipOptions = tooltipOnlyOutdoor ? {
+      tooltipOutdoorData: outdoorData,
+      tooltipOutdoorUnit: this._isAmbientAqiEntity(metric, outdoorEntityId)
+        ? 'AQI'
+        : this._getEntityUnit(outdoorEntityId, unit),
+      tooltipOutdoorColorFn: (value) => colorFn(value, outdoorEntityId)
+    } : {};
+
+    const graphUnit = useAqiComparison ? 'AQI' : unit;
+    const graphMin = useAqiComparison ? 0 : minVal;
+    const graphMax = useAqiComparison ? 240 : maxVal;
+    const primaryLabel = useAqiComparison ? 'Indoor AQI equivalent' : 'Indoor';
+    const outdoorLabel = useAqiComparison ? 'Outdoor AQI' : 'Outdoor';
 
     if (hasPrimary && graphPrimaryData.length) {
       this._renderGraph(
         metric,
         graphPrimaryData,
         graphColorFn,
-        minVal,
-        maxVal,
-        unit,
+        graphMin,
+        graphMax,
+        graphUnit,
         hasOutdoor && canOverlayOutdoor ? graphOutdoorData : [],
-        'Outdoor',
+        outdoorLabel,
         formatValue,
-        hasOutdoor ? { primaryLabel: 'Indoor' } : {}
+        hasOutdoor ? { primaryLabel, ...tooltipOptions } : {}
       );
     } else if (hasOutdoor && graphOutdoorData.length) {
       this._renderGraph(
         metric,
         graphOutdoorData,
         graphColorFn,
-        minVal,
-        maxVal,
-        unit,
+        graphMin,
+        graphMax,
+        graphUnit,
         [],
-        'Outdoor',
+        outdoorLabel,
         formatValue,
         { primaryLabel: 'Outdoor', primaryLineStyle: 'dashed' }
       );
@@ -3018,14 +3123,30 @@ class AirQualityCard extends HTMLElement {
       });
     }
 
+    // A tooltip-only exterior series is intentionally not part of the graph
+    // scale or SVG. It is used when the two data sources have incompatible
+    // units/scales but the user should still be able to inspect both values
+    // at the same point in time.
+    const tooltipOutdoorData = options.tooltipOutdoorData;
+    const tooltipOutdoorPoints = tooltipOutdoorData && tooltipOutdoorData.length
+      ? tooltipOutdoorData.map(d => ({
+          x: this._computeGraphX(d.time, width, padding),
+          value: d.value,
+          time: d.time,
+          color: (options.tooltipOutdoorColorFn || colorFn)(d.value)
+        }))
+      : outdoorPoints;
+
     this._graphData[graphId] = {
       points,
-      outdoorPoints,
+      outdoorPoints: tooltipOutdoorPoints,
       unit,
       colorFn,
       formatValue,
       primaryLabel: options.primaryLabel || '',
-      outdoorLabel: outdoorLabel || 'Outdoor'
+      outdoorLabel: outdoorLabel || 'Outdoor',
+      outdoorUnit: options.tooltipOutdoorUnit || unit,
+      outdoorFormatValue: options.tooltipOutdoorFormatValue || formatValue
     };
 
     if (this._config.show_min_max) {
@@ -3219,14 +3340,15 @@ class AirQualityCard extends HTMLElement {
     const outdoorEl = tooltip.querySelector('.graph-tooltip-outdoor');
     const timeEl = tooltip.querySelector('.graph-tooltip-time');
 
-    const defaultFormatVal = (val) => {
-      if (data.unit === 'ppm' || data.unit === 'ppb' || data.unit === 'AQI' || data.unit === 'p/0.1L' || data.unit === 'Bq/m³') return Math.round(val);
-      if (data.unit === '%' || data.unit === '°F' || data.unit === '°C') return Math.round(val);
-      if (data.unit === 'pCi/L') return val.toFixed(1);
+    const defaultFormatVal = (val, activeUnit) => {
+      if (activeUnit === 'ppm' || activeUnit === 'ppb' || activeUnit === 'AQI' || activeUnit === 'p/0.1L' || activeUnit === 'Bq/m³') return Math.round(val);
+      if (activeUnit === '%' || activeUnit === '°F' || activeUnit === '°C') return Math.round(val);
+      if (activeUnit === 'pCi/L') return val.toFixed(1);
       return val.toFixed(1);
     };
-    const formatVal = data.formatValue || defaultFormatVal;
-    const withUnit = (val) => `${formatVal(val)}${data.unit ? ` ${data.unit}` : ''}`;
+    const formatVal = data.formatValue || ((val) => defaultFormatVal(val, data.unit));
+    const withUnit = (val, activeUnit = data.unit, formatter = formatVal) =>
+      `${formatter(val)}${activeUnit ? ` ${activeUnit}` : ''}`;
 
     if (valueEl) {
       const displayValue = withUnit(closest.value);
@@ -3246,7 +3368,8 @@ class AirQualityCard extends HTMLElement {
             closestOutdoor = point;
           }
         }
-        outdoorEl.textContent = `${data.outdoorLabel}: ${withUnit(closestOutdoor.value)}`;
+        const outdoorFormat = data.outdoorFormatValue || ((val) => defaultFormatVal(val, data.outdoorUnit));
+        outdoorEl.textContent = `${data.outdoorLabel}: ${withUnit(closestOutdoor.value, data.outdoorUnit, outdoorFormat)}`;
         outdoorEl.style.color = closestOutdoor.color;
         outdoorEl.style.display = 'block';
       } else {

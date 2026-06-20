@@ -1,5 +1,5 @@
 /**
- * Air Quality Card Plus v2.13.1 — Unit Tests
+ * Air Quality Card Plus v2.13.2 — Unit Tests
  * Run with: node test.js
  *
  * Tests color functions, recommendation waterfall, config validation,
@@ -248,9 +248,78 @@ waqiCard._hass = {
 assert(waqiCard._getCOUnit() === 'AQI', 'WAQI CO is labelled AQI instead of an assumed ppm concentration');
 assert(waqiCard._getPollutantUnit('no2') === 'AQI', 'WAQI NO₂ is labelled AQI instead of an assumed µg/m³ concentration');
 assert(waqiCard._getMetricStatus('no2', 38, 'sensor.waqi_no2') === 'Good', 'WAQI NO₂ 38 uses AQI bands, not concentration thresholds');
+assert(waqiCard._getQualityColor('38') === '#4caf50', 'numeric AQI 38 colours the header leaf green');
+assert(waqiCard._getQualityColor('75') === '#8bc34a', 'numeric AQI 75 colours the header leaf light green');
+assert(waqiCard._getQualityColor('125') === '#ffc107', 'numeric AQI 125 colours the header leaf yellow');
+assert(waqiCard._getQualityColor('175') === '#ff9800', 'numeric AQI 175 colours the header leaf orange');
+assert(waqiCard._getQualityColor('225') === '#f44336', 'numeric AQI 225 colours the header leaf red');
+waqiCard._config.air_quality_entity = 'sensor.waqi_aqi';
+waqiCard._hass.states['sensor.waqi_aqi'] = { state: '125', attributes: {} };
+assert(waqiCard._getOverallStatus().color === '#ffc107', 'numeric air_quality_entity makes the badge, numeral, and leaf use its AQI colour');
+delete waqiCard._config.air_quality_entity;
 assert(waqiCard._getOverallStatus().status === 'Good', 'WAQI PM2.5 AQI 38 does not make a clean indoor room unhealthy');
 assert(waqiCard._getRecommendationKey() === 'all_good', 'WAQI outdoor PM2.5 AQI 38 does not incorrectly block ventilation');
 assert(waqiCard._canOverlayAmbientMetric('pm25', 'sensor.indoor_pm25', 'sensor.waqi_pm25') === false, 'Physical PM2.5 and WAQI PM2.5 AQI are not drawn on the same graph scale');
+assert(waqiCard._usesAqiComparison('pm25') === true, 'physical indoor PM2.5 and WAQI AQI use the dedicated AQI-equivalent comparison scale');
+assert(waqiCard._toUsEpaParticleAqiEquivalent('pm25', 2, 'sensor.indoor_pm25') === 11, 'PM2.5 2 µg/m³ converts to US EPA AQI-equivalent 11');
+assert(waqiCard._toUsEpaParticleAqiEquivalent('pm25', 10, 'sensor.indoor_pm25') === 53, 'PM2.5 conversion follows the current EPA 9.0/9.1 breakpoint');
+waqiCard._history = {
+  pm25: [{ time: 1000, value: 2 }, { time: 2000, value: 5 }],
+  outdoor_pm25: [{ time: 1000, value: 34 }, { time: 2000, value: 38 }]
+};
+let waqiGraphArgs;
+waqiCard._renderGraph = (...args) => { waqiGraphArgs = args; };
+waqiCard._renderMetricGraph('pm25', waqiCard._getPM25Color.bind(waqiCard), 0, 60, 'µg/m³');
+assert(waqiGraphArgs[3] === 0 && waqiGraphArgs[4] === 240 && waqiGraphArgs[5] === 'AQI', 'mixed PM2.5 graph uses a shared AQI scale');
+assert(JSON.stringify(waqiGraphArgs[1].map(point => point.value)) === JSON.stringify([11, 28]), 'mixed PM2.5 graph converts every indoor history point to AQI-equivalent');
+assert(waqiGraphArgs[6] === waqiCard._history.outdoor_pm25, 'WAQI exterior AQI is drawn as the outdoor dashed line');
+assert(waqiGraphArgs[7] === 'Outdoor AQI' && waqiGraphArgs[9].primaryLabel === 'Indoor AQI equivalent', 'mixed AQI tooltip labels both series honestly');
+
+const waqiPm10Card = new CardClass();
+waqiPm10Card.setConfig({ pm10_entity: 'sensor.indoor_pm10', outdoor_pm10_entity: 'sensor.waqi_pm10' });
+waqiPm10Card._hass = {
+  config: { unit_system: { temperature: '°C' } },
+  states: {
+    'sensor.indoor_pm10': { state: '54', attributes: { unit_of_measurement: 'µg/m³' } },
+    'sensor.waqi_pm10': { state: '50', attributes: { attribution: 'World Air Quality Index Project' } }
+  }
+};
+assert(waqiPm10Card._usesAqiComparison('pm10') === true, 'physical indoor PM10 and WAQI AQI use the AQI-equivalent comparison scale');
+assert(waqiPm10Card._toUsEpaParticleAqiEquivalent('pm10', 54, 'sensor.indoor_pm10') === 50, 'PM10 54 µg/m³ converts to AQI-equivalent 50');
+assert(waqiPm10Card._toUsEpaParticleAqiEquivalent('pm10', 55, 'sensor.indoor_pm10') === 51, 'PM10 conversion crosses the EPA AQI boundary at 55 µg/m³');
+
+const tooltipCard = new CardClass();
+const tooltipValue = { textContent: '', style: {} };
+const tooltipOutdoor = { textContent: '', style: {} };
+const tooltipTime = { textContent: '', style: {} };
+tooltipCard._graphData = {
+  pm25: {
+    points: [{ x: 148, value: 2, time: 1000, color: '#4caf50' }],
+    outdoorPoints: [{ x: 148, value: 34, time: 1000, color: '#4caf50' }],
+    unit: 'µg/m³', outdoorUnit: 'AQI', primaryLabel: 'Indoor', outdoorLabel: 'Outdoor'
+  }
+};
+tooltipCard.shadowRoot = {
+  getElementById(id) {
+    if (id === 'pm25-graph') return { getBoundingClientRect: () => ({ left: 0, width: 300 }) };
+    if (id === 'pm25-cursor') return { style: { setProperty() {} } };
+    if (id === 'pm25-tooltip') return {
+      style: {},
+      querySelector(selector) {
+        return {
+          '.graph-tooltip-value': tooltipValue,
+          '.graph-tooltip-outdoor': tooltipOutdoor,
+          '.graph-tooltip-time': tooltipTime
+        }[selector];
+      }
+    };
+    return null;
+  }
+};
+tooltipCard._updateCursor('pm25', { clientX: 148 });
+assert(tooltipValue.textContent === 'Indoor: 2.0 µg/m³', 'hover keeps the indoor concentration and unit');
+assert(tooltipOutdoor.textContent === 'Outdoor: 34 AQI', 'hover shows the nearest incompatible outdoor value with its own AQI unit');
+assert(tooltipTime.textContent.length > 0, 'hover keeps the historical time after x-axis removal');
 
 section('tVOC Color');
 assert(card._getTVOCColor(50) === '#4caf50', 'tVOC 50 = green');

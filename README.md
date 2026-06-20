@@ -28,6 +28,8 @@ This is a personalised extension of [KadenThomp36/air-quality-card](https://gith
   - [Expandable Display Mode](#expandable-display-mode)
   - [Custom Thresholds](#custom-thresholds)
   - [Units and Conversions](#units-and-conversions)
+    - [Mixed PM concentration + WAQI AQI comparison](#mixed-pm-concentration--waqi-aqi-comparison)
+    - [WAQI entities are AQI, not concentrations](#waqi-entities-are-aqi-not-concentrations)
   - [Language](#language)
   - [Outdoor Sensors](#outdoor-sensors)
   - [Outdoor-Only Mode](#outdoor-only-mode)
@@ -65,6 +67,7 @@ This is a personalised extension of [KadenThomp36/air-quality-card](https://gith
 - **Source-documented status bands** — EEA hourly bands for live ambient concentrations, WHO/EPA reference values for recommendations, and explicit AQI handling for WAQI entities
 - **Actionable recommendations** like "Open Window" or "Run Air Purifier"
 - **Outdoor sensor comparison** - optional dashed line overlay with smart ventilation recommendations
+- **Mixed WAQI particle comparison** - a physical indoor PM2.5/PM10 sensor is shown as a clearly labelled US EPA AQI-equivalent beside outdoor WAQI AQI
 - **Shared indoor/outdoor legend** - one compact footer key explains solid indoor and dashed outdoor lines without adding height to every graph
 - **Outdoor-only metric graphs in mixed cards** - configure an outdoor pollutant even when there is no indoor counterpart; it renders as its own dashed graph
 - **Compact chart height option** - reduce graph block height on dense dashboards with `compact_charts: true`
@@ -85,7 +88,7 @@ New cards should use `type: custom:air-quality-card-plus`. The older `type: cust
 2. Copy it to `/config/www/air-quality-card-plus/air-quality-card.js`
 3. Add the resource in Home Assistant:
    - Go to Settings → Dashboards → Resources
-   - Add `/local/air-quality-card-plus/air-quality-card.js?v=2.13.1` as a JavaScript Module
+   - Add `/local/air-quality-card-plus/air-quality-card.js?v=2.13.2` as a JavaScript Module
 
 ## Configuration
 
@@ -327,7 +330,7 @@ compact_charts: true
 
 ### Air Quality Index entity
 
-The optional `air_quality_entity` is a **passthrough**: whatever value the entity reports is shown directly on the status badge (lowercased and mapped to a color based on standard HA AQI states — `good` / `moderate` / `fair` / `poor` / `very_poor` / `extremely_poor`). The card doesn't interpret it as indoor or outdoor — use whichever entity fits your dashboard.
+The optional `air_quality_entity` is a **passthrough**: whatever value the entity reports is shown directly on the status badge. Standard HA AQI states (`good` / `moderate` / `fair` / `poor` / `very_poor` / `extremely_poor`) are color coded, and a numeric value such as a WAQI station AQI colors the badge, numeral, and leaf from the card's AQI bands: `<50`, `50–99`, `100–149`, `150–199`, and `200+`. The card doesn't interpret it as indoor or outdoor — use whichever entity fits your dashboard.
 
 If you leave it unset, the card computes the status itself from your configured CO / CO₂ / PM2.5 / radon sensors (CO and radon are prioritized as life-safety/health concerns).
 
@@ -455,13 +458,20 @@ The card always displays the unit supplied by the selected Home Assistant entity
 - `mg/m³` is converted to `µg/m³`.
 - For NO₂, O₃, and SO₂, `ppb` is converted at 25 °C and 1013 mbar using 1.88, 1.96, and 2.62 µg/m³ per ppb respectively.
 - A mixed indoor/outdoor graph converts supported concentration pairs to the unit of its primary line, so its line, axis, tooltip, current-value suffix, and colour tiers stay aligned.
-- If the two sources do not have a safely compatible concentration unit, they are not drawn on the same graph. Their current values still appear with their own units.
+- For a physical indoor **PM2.5** or **PM10** entity paired with a detected outdoor WAQI AQI entity, the card instead draws both on a shared AQI scale. The indoor series is explicitly labelled **AQI equivalent** and the outdoor series **AQI** in the current value and hover/touch tooltip.
+- Other incompatible source pairs are not drawn on the same graph. Their current values still appear with their own units, and hover/touch shows the nearest outdoor historical reading with its actual unit.
+
+#### Mixed PM concentration + WAQI AQI comparison
+
+WAQI states that its pollutant readings are already converted to the individual **US EPA AQI**. When an indoor concentration and an outdoor WAQI AQI would otherwise be incomparable, the card converts each indoor PM2.5/PM10 history sample using the current [EPA AQI breakpoints](https://aqs.epa.gov/aqsweb/documents/codetables/aqi_breakpoints.html) and overlays it as a dashed-line comparison.
+
+This is an **AQI-equivalent comparison aid**, not a claim that the indoor sensor provides an official AQI or EPA NowCast. EPA particle AQI uses a 24-hour basis (and the NowCast uses a multi-hour algorithm), while an individual Home Assistant history sample may be instantaneous. The card deliberately leaves CO, NO₂, O₃, and SO₂ as separate-unit tooltip comparisons until their pollutant-specific averaging rules can be represented correctly. See [AirNow's AQI explanation](https://www.airnow.gov/aqi/aqi-basics/using-air-quality-index) and the [EPA AQI technical document](https://www.airnow.gov/sites/default/files/2020-05/aqi-technical-assistance-document-sept2018.pdf).
 
 #### WAQI entities are AQI, not concentrations
 
 The official Home Assistant WAQI integration forwards WAQI's `iaqi.*.v` field. WAQI describes these as **individual AQI** values, and the HA integration does not attach a physical unit to the pollutant entities. The card detects the WAQI attribution automatically and displays `AQI` rather than inventing `ppm` or `µg/m³`.
 
-For example, a WAQI CO value of `0.1` is shown as `0 AQI` (rounded for display), **not** `0.1 ppm`; it cannot be converted to a CO concentration. A WAQI PM2.5 value of `38` is `PM2.5 AQI 38`, not `38 µg/m³`. Detected WAQI values use common AQI bands `[50, 100, 150, 200]`, and they are not overlaid on an indoor physical-concentration graph. This prevents a visually tidy but scientifically false comparison. WAQI's API calls these “individual AQI” values; the HA source code forwards them directly. [WAQI API](https://aqicn.org/api/waqi.info) and [Home Assistant WAQI source](https://github.com/home-assistant/core/blob/dev/homeassistant/components/waqi/sensor.py).
+For example, a WAQI CO value of `0.1` is shown as `0 AQI` (rounded for display), **not** `0.1 ppm`; it cannot be converted to a CO concentration. A WAQI PM2.5 value of `38` is `PM2.5 AQI 38`, not `38 µg/m³`. Detected WAQI values use common AQI bands `[50, 100, 150, 200]`. With an indoor physical PM2.5 or PM10 entity, the card compares it using the separately labelled `AQI eq.` scale; for example `Indoor AQI equivalent: 11 AQI` and `Outdoor AQI: 34 AQI`. It does not apply that shortcut to gases, where the averaging periods differ. WAQI's API calls these “individual AQI” values; the HA source code forwards them directly. [WAQI historical AQI notes](https://aqicn.org/historical), [WAQI API](https://aqicn.org/api/waqi.info), and [Home Assistant WAQI source](https://github.com/home-assistant/core/blob/dev/homeassistant/components/waqi/sensor.py).
 
 ### Language
 
@@ -510,7 +520,7 @@ outdoor_temperature_entity: sensor.outdoor_temperature
 outdoor_pressure_entity: sensor.outdoor_pressure
 ```
 
-For a WAQI source, use the same keys, but remember its pollutant values are individual AQI values. On a mixed card, the card shows their current `AQI` values beside your indoor concentration, but deliberately does not draw the incompatible lines over one another. A dedicated outdoor card works especially well for a station-wide WAQI view.
+For a WAQI source, use the same keys, but remember its pollutant values are individual AQI values. On a mixed card, PM2.5 and PM10 automatically use the clearly labelled indoor `AQI eq.` / outdoor `AQI` comparison scale. Other pollutants retain their native units and show the outdoor AQI in the hover/touch tooltip rather than drawing incomparable lines together. A dedicated outdoor card works especially well for a station-wide WAQI view.
 
 ### Outdoor-Only Mode
 
