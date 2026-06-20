@@ -1,10 +1,12 @@
 /**
- * Air Quality Card Plus v2.13.0 — Unit Tests
+ * Air Quality Card Plus v2.13.1 — Unit Tests
  * Run with: node test.js
  *
  * Tests color functions, recommendation waterfall, config validation,
  * and overall status logic by extracting methods from the card class.
  */
+
+const fs = require('fs');
 
 let passed = 0;
 let failed = 0;
@@ -1828,6 +1830,18 @@ const expectedKeys = [
 for (const key of expectedKeys) {
   assert(Array.isArray(freshCard._history[key]), `History key '${key}' exists and is array`);
 }
+
+// ============================================================
+// COMPACT GRAPH LAYOUT TESTS
+// ============================================================
+
+section('Compact graph layout');
+const cardSource = fs.readFileSync('./air-quality-card.js', 'utf8');
+assert(/\.graph\s*\{\s*height:\s*62px;/.test(cardSource), 'standard graph uses reclaimed axis space (62 px)');
+assert(/\.compact-charts \.graph\s*\{\s*height:\s*34px;/.test(cardSource), 'compact graph uses reclaimed axis space (34 px)');
+assert(!cardSource.includes('graph-time-axis'), 'x-axis time rows are removed from the rendered card');
+assert(/\.graph-header\s*\{[\s\S]*?align-items:\s*baseline;/.test(cardSource), 'metric headers align on a shared text baseline');
+assert(/\.graph-value\s*\{[\s\S]*?font-variant-numeric:\s*tabular-nums;/.test(cardSource), 'metric values use aligned tabular numerals');
 
 // ============================================================
 // SUMMARY

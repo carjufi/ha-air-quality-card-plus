@@ -1,12 +1,12 @@
 /**
- * Air Quality Card Plus v2.13.0
+ * Air Quality Card Plus v2.13.1
  * A custom Home Assistant card for air quality visualization
  * EEA live-air bands, WHO/EPA reference values, and ASHRAE comfort guidance
  *
  * https://github.com/KadenThomp36/air-quality-card
  */
 
-const CARD_VERSION = '2.13.0';
+const CARD_VERSION = '2.13.1';
 
 // Shared color palettes for the 5-tier color scale used across metrics.
 const SCALE_AIRQUALITY = ['#4caf50', '#8bc34a', '#ffc107', '#ff9800', '#f44336']; // green → red
@@ -1772,36 +1772,45 @@ class AirQualityCard extends HTMLElement {
         .graph-header {
           display: flex;
           justify-content: space-between;
-          align-items: center;
+          align-items: baseline;
+          gap: 8px;
           margin-bottom: 6px;
         }
 
         .compact-charts .graph-header {
-          margin-bottom: 1px;
+          margin-bottom: 2px;
         }
 
         .graph-label {
-          font-size: 0.75em;
+          font-size: 0.85em;
           color: var(--secondary-text-color);
-          font-weight: 500;
+          font-weight: 600;
+          line-height: 1.15;
           text-transform: uppercase;
-          letter-spacing: 0.5px;
+          letter-spacing: 0.4px;
+          white-space: nowrap;
         }
 
         .graph-value {
           font-size: 1em;
           font-weight: 700;
+          line-height: 1.15;
+          font-variant-numeric: tabular-nums;
+          text-align: right;
+          white-space: nowrap;
         }
 
         .graph-value .unit {
-          font-size: 0.7em;
-          font-weight: 400;
-          opacity: 0.8;
+          font-size: 0.78em;
+          font-weight: 500;
+          opacity: 0.85;
+          margin-left: 3px;
         }
 
         .graph-value .status {
-          font-size: 0.7em;
-          font-weight: 500;
+          font-size: 0.78em;
+          font-weight: 600;
+          line-height: 1.15;
           margin-left: 6px;
           padding: 2px 6px;
           border-radius: 4px;
@@ -1876,12 +1885,12 @@ class AirQualityCard extends HTMLElement {
         }
 
         .graph {
-          height: 50px;
+          height: 62px;
           position: relative;
         }
 
         .compact-charts .graph {
-          height: 26px;
+          height: 34px;
         }
 
         .graph svg {
@@ -1953,23 +1962,11 @@ class AirQualityCard extends HTMLElement {
         }
 
         .outdoor-value {
-          font-size: 0.75em;
+          font-size: 0.78em;
+          font-weight: 500;
           color: var(--secondary-text-color);
           opacity: 0.7;
-        }
-
-        .graph-time-axis {
-          display: flex;
-          justify-content: space-between;
-          font-size: 0.6em;
-          color: var(--secondary-text-color);
-          margin-top: 4px;
-          opacity: 0.8;
-        }
-
-        .compact-charts .graph-time-axis {
-          margin-top: 1px;
-          font-size: 0.53em;
+          margin-left: 4px;
         }
 
         .graph-legend {
@@ -2072,7 +2069,6 @@ class AirQualityCard extends HTMLElement {
                   <div class="graph-tooltip-time"></div>
                 </div>
               </div>
-              <div class="graph-time-axis" id="co-time-axis"></div>
             </div>
             ` : ''}
 
@@ -2094,7 +2090,6 @@ class AirQualityCard extends HTMLElement {
                   <div class="graph-tooltip-time"></div>
                 </div>
               </div>
-              <div class="graph-time-axis" id="radon-time-axis"></div>
             </div>
             ` : ''}
 
@@ -2115,7 +2110,6 @@ class AirQualityCard extends HTMLElement {
                   <div class="graph-tooltip-time"></div>
                 </div>
               </div>
-              <div class="graph-time-axis" id="co2-time-axis"></div>
             </div>
             ` : ''}
 
@@ -2136,7 +2130,6 @@ class AirQualityCard extends HTMLElement {
                   <div class="graph-tooltip-time"></div>
                 </div>
               </div>
-              <div class="graph-time-axis" id="pm25-time-axis"></div>
             </div>
             ` : ''}
 
@@ -2157,7 +2150,6 @@ class AirQualityCard extends HTMLElement {
                   <div class="graph-tooltip-time"></div>
                 </div>
               </div>
-              <div class="graph-time-axis" id="pm10-time-axis"></div>
             </div>
             ` : ''}
 
@@ -2178,7 +2170,6 @@ class AirQualityCard extends HTMLElement {
                   <div class="graph-tooltip-time"></div>
                 </div>
               </div>
-              <div class="graph-time-axis" id="pm1-time-axis"></div>
             </div>
             ` : ''}
 
@@ -2199,7 +2190,6 @@ class AirQualityCard extends HTMLElement {
                   <div class="graph-tooltip-time"></div>
                 </div>
               </div>
-              <div class="graph-time-axis" id="pm03-time-axis"></div>
             </div>
             ` : ''}
 
@@ -2220,7 +2210,6 @@ class AirQualityCard extends HTMLElement {
                   <div class="graph-tooltip-time"></div>
                 </div>
               </div>
-              <div class="graph-time-axis" id="hcho-time-axis"></div>
             </div>
             ` : ''}
 
@@ -2241,7 +2230,6 @@ class AirQualityCard extends HTMLElement {
                   <div class="graph-tooltip-time"></div>
                 </div>
               </div>
-              <div class="graph-time-axis" id="tvoc-time-axis"></div>
             </div>
             ` : ''}
 
@@ -2262,7 +2250,6 @@ class AirQualityCard extends HTMLElement {
                   <div class="graph-tooltip-time"></div>
                 </div>
               </div>
-              <div class="graph-time-axis" id="pm4-time-axis"></div>
             </div>
             ` : ''}
 
@@ -2283,7 +2270,6 @@ class AirQualityCard extends HTMLElement {
                   <div class="graph-tooltip-time"></div>
                 </div>
               </div>
-              <div class="graph-time-axis" id="nox-time-axis"></div>
             </div>
             ` : ''}
 
@@ -2298,7 +2284,6 @@ class AirQualityCard extends HTMLElement {
                 <div class="graph-cursor" id="no2-cursor"></div>
                 <div class="graph-tooltip" id="no2-tooltip"><div class="graph-tooltip-value"></div><div class="graph-tooltip-outdoor"></div><div class="graph-tooltip-time"></div></div>
               </div>
-              <div class="graph-time-axis" id="no2-time-axis"></div>
             </div>
             ` : ''}
 
@@ -2313,7 +2298,6 @@ class AirQualityCard extends HTMLElement {
                 <div class="graph-cursor" id="o3-cursor"></div>
                 <div class="graph-tooltip" id="o3-tooltip"><div class="graph-tooltip-value"></div><div class="graph-tooltip-outdoor"></div><div class="graph-tooltip-time"></div></div>
               </div>
-              <div class="graph-time-axis" id="o3-time-axis"></div>
             </div>
             ` : ''}
 
@@ -2328,7 +2312,6 @@ class AirQualityCard extends HTMLElement {
                 <div class="graph-cursor" id="so2-cursor"></div>
                 <div class="graph-tooltip" id="so2-tooltip"><div class="graph-tooltip-value"></div><div class="graph-tooltip-outdoor"></div><div class="graph-tooltip-time"></div></div>
               </div>
-              <div class="graph-time-axis" id="so2-time-axis"></div>
             </div>
             ` : ''}
 
@@ -2349,7 +2332,6 @@ class AirQualityCard extends HTMLElement {
                   <div class="graph-tooltip-time"></div>
                 </div>
               </div>
-              <div class="graph-time-axis" id="humidity-time-axis"></div>
             </div>
             ` : ''}
 
@@ -2370,7 +2352,6 @@ class AirQualityCard extends HTMLElement {
                   <div class="graph-tooltip-time"></div>
                 </div>
               </div>
-              <div class="graph-time-axis" id="temperature-time-axis"></div>
             </div>
             ` : ''}
 
@@ -2391,7 +2372,6 @@ class AirQualityCard extends HTMLElement {
                   <div class="graph-tooltip-time"></div>
                 </div>
               </div>
-              <div class="graph-time-axis" id="pressure-time-axis"></div>
             </div>
             ` : ''}
           </div>
@@ -3007,7 +2987,6 @@ class AirQualityCard extends HTMLElement {
 
   _renderGraph(graphId, data, colorFn, minVal, maxVal, unit, outdoorData, outdoorLabel, formatValue, options = {}) {
     const svg = this.shadowRoot.getElementById(`${graphId}-svg`);
-    const timeAxis = this.shadowRoot.getElementById(`${graphId}-time-axis`);
     if (!svg || !data.length) return;
 
     const width = 300;
@@ -3134,21 +3113,6 @@ class AirQualityCard extends HTMLElement {
       `;
     }
 
-    if (timeAxis && points.length > 0) {
-      // Use the configured time window so labels match the X scale even when
-      // data doesn't span the full window (e.g. sensor unavailable for hours).
-      const win = this._timeWindow || { start: points[0].time, end: points[points.length - 1].time };
-      const startTime = new Date(win.start);
-      const endTime = new Date(win.end);
-      const midTime = new Date((win.start + win.end) / 2);
-
-      const formatTime = (d) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-      timeAxis.innerHTML = `
-        <span>${formatTime(startTime)}</span>
-        <span>${formatTime(midTime)}</span>
-        <span>${formatTime(endTime)}</span>
-      `;
-    }
   }
 
   _setupGraphInteractions() {
