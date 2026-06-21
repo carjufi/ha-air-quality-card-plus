@@ -1,12 +1,12 @@
 /**
- * Air Quality Card Plus v2.13.2
+ * Air Quality Card Plus v2.13.3
  * A custom Home Assistant card for air quality visualization
  * EEA live-air bands, WHO/EPA reference values, and ASHRAE comfort guidance
  *
  * https://github.com/KadenThomp36/air-quality-card
  */
 
-const CARD_VERSION = '2.13.2';
+const CARD_VERSION = '2.13.3';
 
 // Shared color palettes for the 5-tier color scale used across metrics.
 const SCALE_AIRQUALITY = ['#4caf50', '#8bc34a', '#ffc107', '#ff9800', '#f44336']; // green → red
@@ -20,6 +20,10 @@ const WAQI_POLLUTANT_METRICS = new Set(['co', ...AMBIENT_METRICS]);
 // without a physical unit, so keep their scale explicitly separate.
 const WAQI_AQI_THRESHOLDS = [50, 100, 150, 200];
 const WAQI_AQI_LABELS = ['Good', 'Moderate', 'Unhealthy for Sensitive Groups', 'Unhealthy', 'Very Unhealthy'];
+// Graph cards have one dense header row. Keep the long EPA category legible
+// there without making the card taller; the complete category remains in the
+// status element's native hover title.
+const WAQI_AQI_COMPACT_LABELS = ['Good', 'Moderate', 'Sensitive groups', 'Unhealthy', 'Very unhealthy'];
 // Current US EPA particle-AQI breakpoints. These are intentionally used only
 // for the opt-in-by-context mixed view below: a physical indoor PM value next
 // to an outdoor WAQI AQI. They are not the card's normal live-air status
@@ -1002,6 +1006,10 @@ class AirQualityCard extends HTMLElement {
     return this._tieredValue(value, WAQI_AQI_THRESHOLDS, WAQI_AQI_LABELS);
   }
 
+  _getAqiCompactStatus(value) {
+    return this._tieredValue(value, WAQI_AQI_THRESHOLDS, WAQI_AQI_COMPACT_LABELS);
+  }
+
   _getNO2Unit() { return this._getPollutantUnit('no2'); }
   _getO3Unit() { return this._getPollutantUnit('o3'); }
   _getSO2Unit() { return this._getPollutantUnit('so2'); }
@@ -1661,12 +1669,14 @@ class AirQualityCard extends HTMLElement {
           padding: 16px;
           color: var(--primary-text-color);
           font-family: var(--paper-font-body1_-_font-family);
+          min-width: 0;
         }
 
         .header {
           display: flex;
           justify-content: space-between;
           align-items: center;
+          gap: 12px;
           margin-bottom: 12px;
         }
 
@@ -1688,6 +1698,10 @@ class AirQualityCard extends HTMLElement {
           display: inline-flex;
           align-items: center;
           gap: 4px;
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
 
         .collapse-chevron {
@@ -1704,12 +1718,20 @@ class AirQualityCard extends HTMLElement {
           font-size: 0.8em;
           font-weight: 500;
           text-transform: capitalize;
+          flex: 0 1 auto;
+          min-width: 0;
+          max-width: 50%;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
         .dominant-pollutant {
           display: inline-flex;
           align-items: center;
           gap: 6px;
+          box-sizing: border-box;
+          max-width: 100%;
           margin: -4px 0 12px;
           padding: 5px 9px;
           border-radius: 8px;
@@ -1719,6 +1741,13 @@ class AirQualityCard extends HTMLElement {
         }
         .dominant-pollutant ha-icon {
           --mdc-icon-size: 16px;
+          flex: 0 0 auto;
+        }
+        .dominant-pollutant span {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
         .dominant-pollutant strong {
           color: var(--primary-text-color);
@@ -1741,17 +1770,24 @@ class AirQualityCard extends HTMLElement {
 
         .recommendation-text {
           flex: 1;
+          min-width: 0;
         }
 
         .recommendation-title {
           font-weight: 600;
           font-size: 1em;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
 
         .recommendation-subtitle {
           font-size: 0.8em;
           color: var(--secondary-text-color);
           margin-top: 1px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
 
         /* One-tap action button on the recommendation strip (#34). Inherits the
@@ -1801,6 +1837,7 @@ class AirQualityCard extends HTMLElement {
 
         .radon-advisory-text {
           flex: 1;
+          min-width: 0;
         }
 
         .radon-advisory-title {
@@ -1812,6 +1849,9 @@ class AirQualityCard extends HTMLElement {
           font-size: 0.75em;
           color: var(--secondary-text-color);
           margin-top: 1px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
 
         .graphs {
@@ -1842,6 +1882,7 @@ class AirQualityCard extends HTMLElement {
           align-items: baseline;
           gap: 8px;
           margin-bottom: 6px;
+          min-width: 0;
         }
 
         .compact-charts .graph-header {
@@ -1856,14 +1897,25 @@ class AirQualityCard extends HTMLElement {
           text-transform: uppercase;
           letter-spacing: 0.4px;
           white-space: nowrap;
+          flex: 0 1 auto;
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
         .graph-value {
+          display: flex;
+          align-items: baseline;
+          justify-content: flex-end;
+          flex-wrap: nowrap;
           font-size: 1em;
           font-weight: 700;
           line-height: 1.15;
           font-variant-numeric: tabular-nums;
           text-align: right;
+          flex: 1 1 auto;
+          min-width: 0;
+          overflow: hidden;
           white-space: nowrap;
         }
 
@@ -1875,12 +1927,20 @@ class AirQualityCard extends HTMLElement {
         }
 
         .graph-value .status {
+          display: inline-block;
+          box-sizing: border-box;
+          flex: 0 1 auto;
+          min-width: 0;
           font-size: 0.78em;
           font-weight: 600;
           line-height: 1.15;
           margin-left: 6px;
           padding: 2px 6px;
           border-radius: 4px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          vertical-align: baseline;
         }
 
         .graph-value-secondary {
@@ -1890,6 +1950,10 @@ class AirQualityCard extends HTMLElement {
           margin-top: -2px;
           margin-bottom: 4px;
           text-align: right;
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
 
         .graph-value-secondary .unit {
@@ -1999,13 +2063,16 @@ class AirQualityCard extends HTMLElement {
           position: absolute;
           top: -6px;
           transform: translateX(-50%);
+          box-sizing: border-box;
+          max-width: calc(100% - 12px);
           background: var(--primary-background-color);
           border: 1px solid var(--divider-color);
           border-radius: 6px;
           padding: 3px 7px;
           font-size: 0.7em;
           font-weight: 600;
-          white-space: nowrap;
+          white-space: normal;
+          overflow-wrap: anywhere;
           pointer-events: none;
           display: none;
           z-index: 10;
@@ -2029,11 +2096,18 @@ class AirQualityCard extends HTMLElement {
         }
 
         .outdoor-value {
+          display: inline-block;
+          box-sizing: border-box;
+          flex: 0 1 auto;
+          min-width: 0;
           font-size: 0.78em;
           font-weight: 500;
           color: var(--secondary-text-color);
           opacity: 0.7;
           margin-left: 4px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
 
         .graph-legend {
@@ -2533,7 +2607,11 @@ class AirQualityCard extends HTMLElement {
       dominantEl.style.display = valid ? '' : 'none';
       if (valid) {
         const valueEl = this.shadowRoot.getElementById('dominant-pollutant-value');
-        if (valueEl) valueEl.textContent = this._formatDominantPollutant(value);
+        if (valueEl) {
+          const displayValue = this._formatDominantPollutant(value);
+          valueEl.textContent = displayValue;
+          valueEl.title = displayValue;
+        }
       }
     }
 
@@ -2620,6 +2698,8 @@ class AirQualityCard extends HTMLElement {
         }
       }
       recSubtitle.textContent = subtitle;
+      recTitle.title = recommendation;
+      recSubtitle.title = subtitle;
 
       const isGood = recKey === 'all_good';
       const isCritical = ['co_danger', 'co_warning'].includes(recKey);
@@ -2662,7 +2742,8 @@ class AirQualityCard extends HTMLElement {
       // Unitless index metrics (empty unit) match the indoor 1-decimal display
       const precise = displayUnit === 'μg/m³' || displayUnit === 'µg/m³' || displayUnit === 'ppb' || displayUnit === '';
       const display = formatter ? formatter(val) : (precise ? val.toFixed(1) : Math.round(val));
-      return ` <span class="outdoor-value">(out: ${display}${displayUnit ? ' ' + displayUnit : ''})</span>`;
+      const text = `(out: ${display}${displayUnit ? ' ' + displayUnit : ''})`;
+      return ` <span class="outdoor-value" title="${text}">${text}</span>`;
     };
 
     // Update CO
@@ -2674,7 +2755,9 @@ class AirQualityCard extends HTMLElement {
         const coDisplay = coUnit === 'AQI' ? Math.round(co) : co.toFixed(1);
         coValueEl.innerHTML = `${coDisplay} <span class="unit">${coUnit}</span><span class="status" id="co-status"></span>${outdoorSuffix('outdoor_co_entity', co, coUnit, undefined, 'co')}`;
         const statusEl = coValueEl.querySelector('.status');
-        statusEl.textContent = this._getMetricStatus('co', co);
+        const coStatus = this._getMetricStatus('co', co);
+        statusEl.textContent = coUnit === 'AQI' ? this._getAqiCompactStatus(co) : coStatus;
+        statusEl.title = coStatus;
         statusEl.style.background = coColor + '22';
         statusEl.style.color = coColor;
         coValueEl.style.color = coColor;
@@ -2776,7 +2859,10 @@ class AirQualityCard extends HTMLElement {
         const pm25Display = pm25Unit.startsWith('AQI') ? Math.round(pm25AqiComparison ? pm25AqiValue : pm25) : pm25.toFixed(1);
         pm25ValueEl.innerHTML = `${pm25Display} <span class="unit">${pm25Unit}</span><span class="status" id="pm25-status"></span>${outdoorSuffix('outdoor_pm25_entity', pm25, pm25AqiComparison ? 'AQI' : pm25Unit, undefined, 'pm25')}`;
         const statusEl = pm25ValueEl.querySelector('.status');
-        statusEl.textContent = pm25AqiComparison ? this._getAqiStatus(pm25AqiValue) : this._getMetricStatus('pm25', pm25);
+        const pm25Status = pm25AqiComparison ? this._getAqiStatus(pm25AqiValue) : this._getMetricStatus('pm25', pm25);
+        const pm25IsAqi = pm25AqiComparison || pm25Unit === 'AQI';
+        statusEl.textContent = pm25IsAqi ? this._getAqiCompactStatus(pm25AqiComparison ? pm25AqiValue : pm25) : pm25Status;
+        statusEl.title = pm25Status;
         statusEl.style.background = pm25Color + '22';
         statusEl.style.color = pm25Color;
         pm25ValueEl.style.color = pm25Color;
@@ -2796,7 +2882,10 @@ class AirQualityCard extends HTMLElement {
         const pm10Display = pm10Unit.startsWith('AQI') ? Math.round(pm10AqiComparison ? pm10AqiValue : pm10) : pm10.toFixed(1);
         pm10ValueEl.innerHTML = `${pm10Display} <span class="unit">${pm10Unit}</span><span class="status" id="pm10-status"></span>${outdoorSuffix('outdoor_pm10_entity', pm10, pm10AqiComparison ? 'AQI' : pm10Unit, undefined, 'pm10')}`;
         const statusEl = pm10ValueEl.querySelector('.status');
-        statusEl.textContent = pm10AqiComparison ? this._getAqiStatus(pm10AqiValue) : this._getMetricStatus('pm10', pm10);
+        const pm10Status = pm10AqiComparison ? this._getAqiStatus(pm10AqiValue) : this._getMetricStatus('pm10', pm10);
+        const pm10IsAqi = pm10AqiComparison || pm10Unit === 'AQI';
+        statusEl.textContent = pm10IsAqi ? this._getAqiCompactStatus(pm10AqiComparison ? pm10AqiValue : pm10) : pm10Status;
+        statusEl.title = pm10Status;
         statusEl.style.background = pm10Color + '22';
         statusEl.style.color = pm10Color;
         pm10ValueEl.style.color = pm10Color;
@@ -2842,7 +2931,9 @@ class AirQualityCard extends HTMLElement {
       const display = unit === 'AQI' ? Math.round(value) : value.toFixed(1);
       valueEl.innerHTML = `${display} <span class="unit">${unit}</span><span class="status" id="${metric}-status"></span>${outdoorSuffix(`outdoor_${metric}_entity`, value, unit, undefined, metric)}`;
       const statusEl = valueEl.querySelector('.status');
-      statusEl.textContent = this._getMetricStatus(metric, value, entityId);
+      const status = this._getMetricStatus(metric, value, entityId);
+      statusEl.textContent = unit === 'AQI' ? this._getAqiCompactStatus(value) : status;
+      statusEl.title = status;
       statusEl.style.background = color + '22';
       statusEl.style.color = color;
       valueEl.style.color = color;
@@ -2954,6 +3045,13 @@ class AirQualityCard extends HTMLElement {
         statusEl.style.color = pressureColor;
         pressureValueEl.style.color = pressureColor;
       }
+    }
+
+    // CSS may ellipsize a dense metric header at very narrow widths. Preserve
+    // the complete status in the native hover/focus hint without increasing
+    // any card's height.
+    for (const statusEl of this.shadowRoot.querySelectorAll?.('.graph-value .status') || []) {
+      if (!statusEl.title) statusEl.title = statusEl.textContent;
     }
 
   }
@@ -3308,6 +3406,20 @@ class AirQualityCard extends HTMLElement {
     if (tooltip) tooltip.style.display = 'none';
   }
 
+  // Keep a variable-width tooltip inside the graph. The old fixed 12/88%
+  // bounds only worked for a short, one-line tooltip; a translated or
+  // indoor/outdoor tooltip can be much wider.
+  _getTooltipPosition(cursorPercent, tooltipWidth, graphWidth) {
+    if (!Number.isFinite(tooltipWidth) || !Number.isFinite(graphWidth) || graphWidth <= 0) {
+      return Math.max(12, Math.min(88, cursorPercent));
+    }
+    const halfWidthPercent = (tooltipWidth / graphWidth) * 50;
+    const min = halfWidthPercent + 2;
+    const max = 100 - halfWidthPercent - 2;
+    if (min >= max) return 50;
+    return Math.max(min, Math.min(max, cursorPercent));
+  }
+
   _updateCursor(graphId, event) {
     const graphEl = this.shadowRoot.getElementById(`${graphId}-graph`);
     const cursor = this.shadowRoot.getElementById(`${graphId}-cursor`);
@@ -3382,9 +3494,11 @@ class AirQualityCard extends HTMLElement {
       timeEl.textContent = time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     }
 
-    let tooltipX = pct * 100;
-    if (tooltipX < 12) tooltipX = 12;
-    if (tooltipX > 88) tooltipX = 88;
+    const tooltipX = this._getTooltipPosition(
+      pct * 100,
+      Number(tooltip.offsetWidth),
+      rect.width
+    );
     tooltip.style.left = `${tooltipX}%`;
   }
 }

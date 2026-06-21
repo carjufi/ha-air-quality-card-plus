@@ -71,6 +71,7 @@ This is a personalised extension of [KadenThomp36/air-quality-card](https://gith
 - **Shared indoor/outdoor legend** - one compact footer key explains solid indoor and dashed outdoor lines without adding height to every graph
 - **Outdoor-only metric graphs in mixed cards** - configure an outdoor pollutant even when there is no indoor counterpart; it renders as its own dashed graph
 - **Compact chart height option** - reduce graph block height on dense dashboards with `compact_charts: true`
+- **Overflow-safe metric headers** - preserve the one-line compact layout; secondary text ellipsizes with the full value available on hover
 - **Tap to expand** - click any graph to open the full Home Assistant history view
 - **Visual configuration editor** - no YAML required, with collapsible sections for clean organization
 
@@ -88,7 +89,7 @@ New cards should use `type: custom:air-quality-card-plus`. The older `type: cust
 2. Copy it to `/config/www/air-quality-card-plus/air-quality-card.js`
 3. Add the resource in Home Assistant:
    - Go to Settings → Dashboards → Resources
-   - Add `/local/air-quality-card-plus/air-quality-card.js?v=2.13.2` as a JavaScript Module
+   - Add `/local/air-quality-card-plus/air-quality-card.js?v=2.13.3` as a JavaScript Module
 
 ## Configuration
 

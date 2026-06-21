@@ -1,5 +1,5 @@
 /**
- * Air Quality Card Plus v2.13.2 — Unit Tests
+ * Air Quality Card Plus v2.13.3 — Unit Tests
  * Run with: node test.js
  *
  * Tests color functions, recommendation waterfall, config validation,
@@ -248,6 +248,8 @@ waqiCard._hass = {
 assert(waqiCard._getCOUnit() === 'AQI', 'WAQI CO is labelled AQI instead of an assumed ppm concentration');
 assert(waqiCard._getPollutantUnit('no2') === 'AQI', 'WAQI NO₂ is labelled AQI instead of an assumed µg/m³ concentration');
 assert(waqiCard._getMetricStatus('no2', 38, 'sensor.waqi_no2') === 'Good', 'WAQI NO₂ 38 uses AQI bands, not concentration thresholds');
+assert(waqiCard._getAqiCompactStatus(125) === 'Sensitive groups', 'long AQI category has a compact one-line graph label');
+assert(waqiCard._getAqiStatus(125) === 'Unhealthy for Sensitive Groups', 'complete AQI category remains available for status details');
 assert(waqiCard._getQualityColor('38') === '#4caf50', 'numeric AQI 38 colours the header leaf green');
 assert(waqiCard._getQualityColor('75') === '#8bc34a', 'numeric AQI 75 colours the header leaf light green');
 assert(waqiCard._getQualityColor('125') === '#ffc107', 'numeric AQI 125 colours the header leaf yellow');
@@ -952,6 +954,13 @@ assert(card._formatGraphValue(5.4, 'Bq/m³') === 5, 'Bq/m³ rounds');
 assert(card._formatGraphValue(5.4, '°C') === 5, '°C rounds');
 assert(card._formatGraphValue(5.45, 'pCi/L') === '5.5', 'pCi/L 1 decimal (rounded)');
 assert(card._formatGraphValue(2.3, 'μg/m³') === '2.3', 'μg/m³ 1 decimal');
+
+section('Responsive text and tooltip layout');
+assert(card._getTooltipPosition(0, 120, 300) === 22, 'wide tooltip at graph start stays inside its left edge');
+assert(card._getTooltipPosition(100, 120, 300) === 78, 'wide tooltip at graph end stays inside its right edge');
+assert(card._getTooltipPosition(50, 294, 300) === 50, 'nearly full-width tooltip remains centred without overflow');
+assert(card._getTooltipPosition(-5, NaN, 300) === 12, 'unknown tooltip width keeps the legacy safe left bound');
+assert(card._getTooltipPosition(105, NaN, 300) === 88, 'unknown tooltip width keeps the legacy safe right bound');
 
 // Default config has show_min_max: false (opt-in)
 const defaultCard = new CardClass();
@@ -1909,8 +1918,12 @@ const cardSource = fs.readFileSync('./air-quality-card.js', 'utf8');
 assert(/\.graph\s*\{\s*height:\s*62px;/.test(cardSource), 'standard graph uses reclaimed axis space (62 px)');
 assert(/\.compact-charts \.graph\s*\{\s*height:\s*34px;/.test(cardSource), 'compact graph uses reclaimed axis space (34 px)');
 assert(!cardSource.includes('graph-time-axis'), 'x-axis time rows are removed from the rendered card');
-assert(/\.graph-header\s*\{[\s\S]*?align-items:\s*baseline;/.test(cardSource), 'metric headers align on a shared text baseline');
+assert(/\.graph-header\s*\{[\s\S]*?align-items:\s*baseline;/.test(cardSource), 'metric headers retain their compact one-line baseline');
 assert(/\.graph-value\s*\{[\s\S]*?font-variant-numeric:\s*tabular-nums;/.test(cardSource), 'metric values use aligned tabular numerals');
+assert(/\.graph-value\s*\{[\s\S]*?display:\s*flex;[\s\S]*?min-width:\s*0;[\s\S]*?overflow:\s*hidden;[\s\S]*?white-space:\s*nowrap;/.test(cardSource), 'metric values shrink within a fixed one-line header');
+assert(/\.graph-value \.status\s*\{[\s\S]*?min-width:\s*0;[\s\S]*?text-overflow:\s*ellipsis;[\s\S]*?white-space:\s*nowrap;/.test(cardSource), 'long status badges ellipsize instead of making a metric card taller or wider');
+assert(/\.outdoor-value\s*\{[\s\S]*?min-width:\s*0;[\s\S]*?text-overflow:\s*ellipsis;[\s\S]*?white-space:\s*nowrap;/.test(cardSource), 'outdoor suffixes stay on the existing header line without spilling');
+assert(/\.graph-tooltip\s*\{[\s\S]*?max-width:\s*calc\(100% - 12px\);/.test(cardSource), 'tooltips are bounded to the graph width');
 
 // ============================================================
 // SUMMARY
