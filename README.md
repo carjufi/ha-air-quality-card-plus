@@ -89,7 +89,7 @@ New cards should use `type: custom:air-quality-card-plus`. The older `type: cust
 2. Copy it to `/config/www/air-quality-card-plus/air-quality-card.js`
 3. Add the resource in Home Assistant:
    - Go to Settings → Dashboards → Resources
-   - Add `/local/air-quality-card-plus/air-quality-card.js?v=2.13.3` as a JavaScript Module
+   - Add `/local/air-quality-card-plus/air-quality-card.js?v=2.13.4` as a JavaScript Module
 
 ## Configuration
 

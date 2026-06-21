@@ -1,12 +1,12 @@
 /**
- * Air Quality Card Plus v2.13.3
+ * Air Quality Card Plus v2.13.4
  * A custom Home Assistant card for air quality visualization
  * EEA live-air bands, WHO/EPA reference values, and ASHRAE comfort guidance
  *
  * https://github.com/KadenThomp36/air-quality-card
  */
 
-const CARD_VERSION = '2.13.3';
+const CARD_VERSION = '2.13.4';
 
 // Shared color palettes for the 5-tier color scale used across metrics.
 const SCALE_AIRQUALITY = ['#4caf50', '#8bc34a', '#ffc107', '#ff9800', '#f44336']; // green → red
@@ -2064,15 +2064,16 @@ class AirQualityCard extends HTMLElement {
           top: -6px;
           transform: translateX(-50%);
           box-sizing: border-box;
+          width: max-content;
           max-width: calc(100% - 12px);
+          overflow: hidden;
           background: var(--primary-background-color);
           border: 1px solid var(--divider-color);
           border-radius: 6px;
           padding: 3px 7px;
           font-size: 0.7em;
           font-weight: 600;
-          white-space: normal;
-          overflow-wrap: anywhere;
+          white-space: nowrap;
           pointer-events: none;
           display: none;
           z-index: 10;
@@ -2084,15 +2085,30 @@ class AirQualityCard extends HTMLElement {
           font-weight: 400;
           color: var(--secondary-text-color);
           margin-top: 1px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
 
+        .graph-tooltip-value,
         .graph-tooltip-outdoor {
           font-size: 0.8em;
           font-weight: 400;
           color: var(--secondary-text-color);
           opacity: 0.7;
           margin-top: 1px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
           display: none;
+        }
+
+        .graph-tooltip-value {
+          display: block;
+          font-size: 1em;
+          font-weight: 600;
+          opacity: 1;
+          margin-top: 0;
         }
 
         .outdoor-value {

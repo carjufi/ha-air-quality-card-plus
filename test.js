@@ -1,5 +1,5 @@
 /**
- * Air Quality Card Plus v2.13.3 — Unit Tests
+ * Air Quality Card Plus v2.13.4 — Unit Tests
  * Run with: node test.js
  *
  * Tests color functions, recommendation waterfall, config validation,
@@ -1923,7 +1923,8 @@ assert(/\.graph-value\s*\{[\s\S]*?font-variant-numeric:\s*tabular-nums;/.test(ca
 assert(/\.graph-value\s*\{[\s\S]*?display:\s*flex;[\s\S]*?min-width:\s*0;[\s\S]*?overflow:\s*hidden;[\s\S]*?white-space:\s*nowrap;/.test(cardSource), 'metric values shrink within a fixed one-line header');
 assert(/\.graph-value \.status\s*\{[\s\S]*?min-width:\s*0;[\s\S]*?text-overflow:\s*ellipsis;[\s\S]*?white-space:\s*nowrap;/.test(cardSource), 'long status badges ellipsize instead of making a metric card taller or wider');
 assert(/\.outdoor-value\s*\{[\s\S]*?min-width:\s*0;[\s\S]*?text-overflow:\s*ellipsis;[\s\S]*?white-space:\s*nowrap;/.test(cardSource), 'outdoor suffixes stay on the existing header line without spilling');
-assert(/\.graph-tooltip\s*\{[\s\S]*?max-width:\s*calc\(100% - 12px\);/.test(cardSource), 'tooltips are bounded to the graph width');
+assert(/\.graph-tooltip\s*\{[\s\S]*?width:\s*max-content;[\s\S]*?max-width:\s*calc\(100% - 12px\);[\s\S]*?white-space:\s*nowrap;/.test(cardSource), 'tooltips preserve normal horizontal lines while remaining bounded to the graph width');
+assert(/\.graph-tooltip-value,[\s\S]*?\.graph-tooltip-outdoor\s*\{[\s\S]*?text-overflow:\s*ellipsis;[\s\S]*?white-space:\s*nowrap;/.test(cardSource), 'only genuinely overwide tooltip lines ellipsize instead of breaking into characters');
 
 // ============================================================
 // SUMMARY
